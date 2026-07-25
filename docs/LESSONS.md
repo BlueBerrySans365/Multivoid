@@ -315,7 +315,7 @@ instead of re-excavating the same hole.** Born because the project dug the same 
 - **Commit autonomously at verified checkpoints; still ASK before PUSH.** `memory/feedback_commit_autonomously.md`
 - **Never retire a load-bearing fix on an unverified theory.** `memory/feedback_verify_before_retiring_a_fix.md`
 - **SAME bug after 2+ targeted fixes = the patch LEVEL is wrong; the root is architectural** — stop patching, re-root. `memory/feedback_recurring_bug_is_architectural.md`
-- **A cross-cutting axis has ONE owner** — handlers CAPTURE, never apply (anti-smear). `memory/feedback_one_owner_order_axis.md`
+- **A cross-cutting axis has ONE owner** — handlers CAPTURE, never apply (anti-smear). Sharpened 2026-07-25 (CI /qf R6 reframe): the axis question applies to AUTOMATION too — a release workflow auto-committing a version bump made CI a second writer of main; demoting the robot to VERIFIER (refuse-to-publish preconditions) dissolved three rounds of machinery. Ask "who else writes this axis?" before designing anything that commits/pushes. `memory/feedback_one_owner_order_axis.md`
 - **Fix a mirror-identity race WORKING first, generalize only after N>=3.** `memory/feedback_fix_then_generalize_mirror_identity.md`
 - **Every source FOLDER = ONE domain concept; no catch-all names.** `memory/feedback_folder_per_domain_concept_rule.md`
 - **RULE 2 does NOT apply to probes/diagnostics/tools** (they may stay) — but the exemption protects WORKING diagnostics, NOT stubs whose documented capability was already removed (s27 netloopback: doc said loopback verifier, code said stub-since-PR-2 → retired `e6f8576e`). Read the code, not the doc row. `memory/feedback_rule2_exempts_probes_diagnostics_tools.md`
@@ -1322,6 +1322,13 @@ instead of re-excavating the same hole.** Born because the project dug the same 
 
 ## 8. Build / deploy / git hygiene
 
+- **Deletable platform objects (git tags, GitHub releases) cannot hold an append-only invariant** — a
+  yanked tag silently frees its "consumed" build number for different bytes; record consumption in an
+  append-only LEDGER file on the protected branch (repo's own history = the only mechanically
+  append-only store), demote tags/releases to drift detectors, and record the negative states
+  (burn/retracted) as rows — absence must never encode a state the invariant distinguishes. Look FIRST:
+  `research/findings/tooling/votv-ci-autobuild-dev-release-DESIGN-2026-07-25.md` §3 D3.
+  `memory/lesson_deletable_platform_objects_cannot_hold_append_only_invariants.md`
 - **`deploy-all.ps1` deploys Release** → ALWAYS build Release + hash-verify. `memory/lesson_deploy_sources_release_config_not_relwithdebinfo.md`
 - **Filtered tool output HIDES verdicts — twice-bitten:** s22 a grep+tail filter ate a LINK error (a
   STALE DLL deployed; the SHA-256 build-vs-deployed compare caught it), s23 `smoke | tail -4` cut the
