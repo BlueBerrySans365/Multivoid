@@ -1,129 +1,35 @@
-name: Nightly Build
+# build.yml -- the CI lane's entry (design D1/D2/D11). Based on PR #2 by
+# huoyan1231 (thanks!) -- the vcpkg/CMake build steps he authored now live in
+# build-core.yml, which this file dispatches; his authorship stays in this
+# PR's history. Reworked per the maintainers' design: MANUAL-ONLY
+# (workflow_dispatch; the nightly cron was deliberately dropped -- builds are
+# human-paced), and a THIN entry so the CI lane and the release lane share ONE
+# build implementation (build-core@main, remote form on purpose -- a
+# local-path uses: would resolve from the triggering branch).
+# Artifacts are CI evidence, NOT distribution -- releases are the supported
+# install channel.
+name: build
 
-# 触发时间：每天 UTC 0 点（即北京时间 08:00）自动构建。
-# 另外保留 workflow_dispatch，方便在 Actions 页面手动触发一次。
-# 如需在每次 push 到 main 时也构建，可取消下面 push 段的注释。
 on:
-  schedule:
-    - cron: "0 0 * * *"
-  workflow_dispatch: {}
-  # push:
-  #   branches: [main]
+  workflow_dispatch:
+    inputs:
+      cacheless:
+        description: build without caches (the release-path smoke)
+        required: false
+        type: boolean
+        default: false
 
-# 同一时间只允许一个构建在跑；若到点时上一次仍在跑，新触发会被跳过（不取消进行中的任务）。
 concurrency:
-  group: nightly-build
+  group: ci-build-${{ github.ref }}
   cancel-in-progress: false
 
-env:
-  # VCPKG_ROOT / VCPKG_TRIPLET / BUILD_DIR 用于各步骤。生成器(VS 版本)不写死，
-  # 改由下方「Detect Visual Studio generator」步骤用 vswhere 动态探测，以自动匹配
-  # runner 上实际安装的 VS（2022 -> "Visual Studio 17 2022"，2026 -> "Visual Studio 18 2026"），
-  # 并确保与 vcpkg 构建 protobuf 时使用的 MSVC 一致（否则链接期会出现
-  # 找不到 __std_*_trivial_N 之类的问题）。
-  VCPKG_ROOT: "C:/vcpkg"
-  VCPKG_TRIPLET: "x64-windows-static"
-  BUILD_DIR: "build/votv-coop"
+permissions:
+  contents: read
 
 jobs:
   build:
-    name: Build Windows x64 Release
-    runs-on: windows-latest
-    # GNS + webrtc 首次全量构建较久，给足时间（GitHub 上限 360 分钟）。
-    timeout-minutes: 360
-
-    steps:
-      - name: Checkout (submodules 稍后手动初始化)
-        uses: actions/checkout@v4
-        with:
-          submodules: false   # 不直接全量拉取，下面只拉构建必需的 third_party
-          fetch-depth: 0      # 完整克隆，避免子模块指向的 commit 因浅克隆取不到
-
-      - name: Init build submodules (只拉 third_party，跳过 reference/* 大仓库)
-        shell: bash
-        run: |
-          git submodule update --init --recursive src/votv-coop/third_party
-
-      - name: "Fallback: 确保 opus 子模块存在"
-        # 见 BUILDING.md「Troubleshooting」：旧克隆里 opus 的 gitlink 缺少
-        # .gitmodules 条目，--recursive 会静默跳过它，导致 configure 失败。
-        shell: bash
-        run: |
-          OPUS_DIR="src/votv-coop/third_party/opus"
-          if [ -z "$(ls -A "$OPUS_DIR" 2>/dev/null)" ]; then
-            echo "opus submodule empty -> 直接克隆 v1.5.2"
-            rm -rf "$OPUS_DIR"
-            git clone --depth 1 -b v1.5.2 https://github.com/xiph/opus.git "$OPUS_DIR"
-          else
-            echo "opus present, ok"
-          fi
-
-      - name: Restore cached vcpkg
-        id: vcpkg-cache
-        uses: actions/cache@v4
-        with:
-          path: C:\vcpkg
-          key: vcpkg-windows-latest-full
-
-      - name: Install vcpkg (clone + bootstrap + unshallow)
-        shell: pwsh
-        run: |
-          if (-not (Test-Path "${{ env.VCPKG_ROOT }}\.git")) {
-            git clone https://github.com/microsoft/vcpkg.git ${{ env.VCPKG_ROOT }}
-            & "${{ env.VCPKG_ROOT }}\bootstrap-vcpkg.bat" -disableMetrics
-            # 必须 unshallow，否则 manifest 安装历史 protobuf 3.21.12 端口会失败
-            # （git read-tree ... exit code 128）
-            git -C ${{ env.VCPKG_ROOT }} fetch --unshallow
-          } else {
-            Write-Host "vcpkg restored from cache"
-          }
-
-      - name: Restore cached vcpkg_installed
-        id: inst-cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.BUILD_DIR }}/vcpkg_installed
-          key: vcpkg-installed-${{ hashFiles('src/votv-coop/vcpkg.json') }}-${{ runner.os }}
-
-      - name: Detect Visual Studio generator
-        id: vsgen
-        shell: pwsh
-        run: |
-          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          # 优先挑带 C++ 编译工具(VC.Tools)的最新 VS；拿不到再退而求其次取最新
-          $major = & $vswhere -latest -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property catalog_productLineVersion
-          if (-not $major) { $major = & $vswhere -latest -property catalog_productLineVersion }
-          $major = $major.Trim()
-          # 大版本号 -> 发布年份（BUILDING.md：VS 2026 对应 18）
-          $yearMap = @{ '16'='2019'; '17'='2022'; '18'='2026'; '19'='2029' }
-          $year = $yearMap[$major]
-          if (-not $year) { throw "Unrecognized Visual Studio major version: '$major'. 请在 yearMap 中补充年份映射。" }
-          $generator = "Visual Studio $major $year"
-          Write-Host "Detected Visual Studio generator: $generator"
-          "generator=$generator" | Out-File -Append $env:GITHUB_OUTPUT
-
-      - name: Configure (CMake + vcpkg manifest 模式)
-        shell: pwsh
-        run: |
-          cmake -S src/votv-coop -B ${{ env.BUILD_DIR }} `
-            -G "${{ steps.vsgen.outputs.generator }}" -A x64 `
-            -DCMAKE_TOOLCHAIN_FILE="${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake" `
-            -DVCPKG_TARGET_TRIPLET=${{ env.VCPKG_TRIPLET }} `
-            -DVCPKG_MANIFEST_MODE=ON
-
-      - name: Build (Release)
-        shell: pwsh
-        run: cmake --build ${{ env.BUILD_DIR }} --config Release
-
-      - name: List build artifacts
-        shell: pwsh
-        run: Get-ChildItem ${{ env.BUILD_DIR }}/Release/*.dll | ForEach-Object { Write-Host $_.FullName }
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: multivoid-release
-          # 同时包含负载 DLL（multivoid-<game>-<build>.dll）与代理加载器 xinput1_3.dll
-          path: ${{ env.BUILD_DIR }}/Release/*.dll
-          retention-days: 30
-          if-no-files-found: error
+    uses: VOTV-MP/Multivoid/.github/workflows/build-core.yml@main
+    with:
+      ref: ${{ github.sha }}
+      source-sha: ${{ github.sha }}
+      use-cache: ${{ !inputs.cacheless }}
