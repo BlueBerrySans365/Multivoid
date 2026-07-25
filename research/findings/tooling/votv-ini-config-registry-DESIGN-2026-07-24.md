@@ -41,14 +41,13 @@ Then, on the catalog:
 Settled: `Pelmentor` is a joke and stays; the three surfaced product points are accepted; the catalog is
 commented-lines (delegated to the primary, chosen); the orphan file is deleted.
 
-**Open product question (E1-3, priced, does NOT gate the build):** the user's word **"стоит"** is ambiguous —
-a *visible line* `net.nick=Pelmentor` in the fresh file, or a *behavioral default* with a clean file. Pass 1
-flip-flopped (R8 leaned visible, R9 killed it as two-definitions) and the reversal was never put to the user.
-The build ships the clean file (zero seeded values, the engineering-clean reading; the UI overwrites
-`net.nick`'s line on first edit anyway — `server_browser.cpp:120` — so behavior is identical). If the user
-answers "visible": `net.nick` becomes ONE named registry exception (`kind = seeded-active`), a 5-line
-follow-up. Price stated: an active line pins the value past any future default change (≈0 cost for a nick),
-and installs minted between the build and the follow-up won't have the line.
+**Product question ANSWERED (user, 2026-07-25):** *"Pelmentor это в свежем ini и оно должно не навязываться,
+игрок поменяет это на свой ник."* → **"стоит" = a VISIBLE ACTIVE line**: the fresh-file skeleton carries
+`net.nick=Pelmentor` as its one seeded value, deliberately editable — the player replaces it with their own
+nick. `net.nick` is the ONE named registry exception (`kind = seeded-active`); the price was stated and
+accepted (an active line pins the value past any future default change — ≈0 cost for a nick; the UI
+overwrites the line on first edit anyway, `server_browser.cpp:120`). Every other key keeps zero seeded
+values (F4).
 
 **Drift, stated up front:** requirement 3 ("dev flags last, out of the way") has almost no observable subject
 in a fresh ini (no dev keys exist there); it is satisfied by `[dev]` last in the skeleton and in the catalog.
@@ -127,8 +126,10 @@ differ ONLY in vocabulary, never in line selection. F25's first-RECOGNIZED-value
 silently swallows garbage — the opposite of the third ask). Safety measured: F40 (no ci collisions between
 distinct keys, no case twins, rig clean).
 
-**T1 — the fresh ini is a skeleton.** Ordered section headers only — `[net]` first, `[dev]` last — and
-**zero default values** (F4). **No banner marker** (deleted in pass 3: its only consumer was the dropped
+**T1 — the fresh ini is a skeleton.** Ordered section headers — `[net]` first, `[dev]` last — and
+**zero default values** (F4) with exactly ONE exception, user-ruled 2026-07-25: the skeleton seeds
+**`net.nick=Pelmentor` as an active line under `[net]`** (registry `kind = seeded-active`; the joke is meant
+to be SEEN and replaced by the player — "оно должно не навязываться, игрок поменяет это на свой ник"). **No banner marker** (deleted in pass 3: its only consumer was the dropped
 auto-migration; T3 discriminates by section header per-key; emitting a consumer-less marker is RULE-2-at-birth).
 The **section-order table lives in the registry TU, which is BORN in arc 1** carrying exactly two things —
 that table and the T7 MY-NAME constant (both single-source config data); skeleton and T3 placement both
@@ -308,7 +309,9 @@ T1b's button in arc 2** — stated honestly, that is where the verbatim ask is d
 - **Identity not durable** (unreadable ini OR failed mint write): a fresh guid per such launch, host-side
   json orphans, full recovery on the first durable persist.
 - **Every unconfigured peer becomes `Pelmentor`** (F15); the activity feed renders nicknames, never "You" —
-  several Pelmentors are indistinguishable, same as today's `Player`.
+  several Pelmentors are indistinguishable, same as today's `Player`. Fresh installs additionally SEE the
+  line (`net.nick=Pelmentor` seeded active, user-ruled); the seeded value pins past a future default change —
+  accepted, ≈0 cost for a nick.
 - **Our dev rig loses attribution** unless the four installs get distinct `net.nick` lines.
 - **Population honesty:** every corpus claim covers the 4 rig inis; the repo is public; no census of user
   files exists and none is claimed.
@@ -339,7 +342,8 @@ Pass 3 ran E1-E15 against the pass-2 rewrite, then this rewrite, then confirmati
 producing only doc-coherence/labeling items, closed by measurement and folded in) and **E19, which returned
 a genuine "that holds"**: every §1 ask piece maps to a delivered mechanism, §7 matches T3/T6/T10
 case-for-case with a §5 fixture per class, no contradiction or unmeasured load-bearing claim found.
-**The design is certified; the build (arcs 1+2 as one release) is unblocked.** The one open product question
-('стоит', §1) is priced and does not gate it — the build ships the clean-file default.
+**The design is certified; the build (arcs 1+2 as one release) is unblocked.** The 'стоит' product question
+was ANSWERED by the user 2026-07-25 (§1): the fresh ini seeds `net.nick=Pelmentor` as a visible, editable
+active line — the one `seeded-active` registry exception. No open questions remain.
 
 Status header note: the header's "formal that-holds pending" is superseded by this section.
