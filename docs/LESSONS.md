@@ -1326,9 +1326,29 @@ instead of re-excavating the same hole.** Born because the project dug the same 
   yanked tag silently frees its "consumed" build number for different bytes; record consumption in an
   append-only LEDGER file on the protected branch (repo's own history = the only mechanically
   append-only store), demote tags/releases to drift detectors, and record the negative states
-  (burn/retracted) as rows — absence must never encode a state the invariant distinguishes. Look FIRST:
+  (burn/retracted) as rows — absence must never encode a state the invariant distinguishes.
+  Sharpened 2026-07-25 R17-21: record the positive closure too (`published` row); TERMINAL rows are
+  PUSH-IMMEDIATE (until on origin the invariant rides the deletable API); ledger owns "MAY publish",
+  the release object owns "did THIS tag complete" (own work product, not a gate). Look FIRST:
   `research/findings/tooling/votv-ci-autobuild-dev-release-DESIGN-2026-07-25.md` §3 D3.
   `memory/lesson_deletable_platform_objects_cannot_hold_append_only_invariants.md`
+- **A fetch-push of untrusted content EXECUTES its workflows** — mirroring a fork PR branch into the
+  base repo is itself a push event: a contributor-added `on: push` workflow runs at that instant with
+  base-repo token capabilities (an explicit `permissions:` key elevates past the read-only default,
+  measured). Gate the PUSH, not a later dispatch: sanitize-by-default (mirror script replaces
+  `.github/workflows/` with main's copy; explicit -KeepWorkflows after line-by-line review). Also
+  measured verbatim: a run executes the EVENT commit's YAML; workflow_dispatch requires the file on
+  the DEFAULT branch. Look FIRST: the CI design doc §3 D1 + §2.
+  `memory/lesson_fetch_push_of_untrusted_content_executes_its_workflows.md`
+- **Drills must run the REAL gate on REAL identifiers** — a fake test namespace (build numbers
+  b9000+) violated the gate's own preconditions (proto==N unreachable), so every drill refused on
+  the wrong branch and masked the branch under test; MUST-PASS drills were impossible; the terminal
+  `drill` row class made the publish drill self-refuse. Fix: real numbers via the real ritual +
+  a NO-short-circuit labeled verdict vector (each drill asserts its NAMED line; a fused guard makes
+  a drill indiscriminate — the robot-tag drill had to declare contents:write to reach the ruleset
+  under test) + stated-and-CHECKED preconditions + a positive control for zero-assertions + a
+  cleanup step whose misses fail closed. Look FIRST: the CI design doc §4 + §3 D3.
+  `memory/lesson_drills_must_run_the_real_gate_on_real_identifiers.md`
 - **`deploy-all.ps1` deploys Release** → ALWAYS build Release + hash-verify. `memory/lesson_deploy_sources_release_config_not_relwithdebinfo.md`
 - **Filtered tool output HIDES verdicts — twice-bitten:** s22 a grep+tail filter ate a LINK error (a
   STALE DLL deployed; the SHA-256 build-vs-deployed compare caught it), s23 `smoke | tail -4` cut the
