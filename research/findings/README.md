@@ -45,7 +45,7 @@ state** — each file is a snapshot from its date.
 | `weather-wind/` | weather subsystem REs (scheduler/rendering/mainGamemode/IDA), wind, sky/celestial |
 | `world-systems/` | mushrooms, dirt/window cleaning, fireflies, sleep/nightmare, RNG authority, email, gamerules, notifications, ambient anchors |
 | `vehicles/` | ATV/quadbike arc, delivery drone |
-| `tooling/` | dev-tool + infrastructure designs: the Baritone-analog autonomous bot-director (autonomous-testing driver); the `multivoid.ini` seeder / config-registry / validation / catalog design (`votv-ini-config-registry-DESIGN-2026-07-24.md` — DESIGN, **TWO `/qf` passes, NEITHER converged** (16 + 15 rounds); the doc was REWRITTEN after pass 2 and now carries F24-F35 + §8's list of mechanisms the pass dissolved. Read §2 and §9 before building; full scope is user-authorized but nothing is certified) |
+| `tooling/` | dev-tool + infrastructure designs: the Baritone-analog autonomous bot-director (autonomous-testing driver); the `multivoid.ini` seeder / config-registry / validation / catalog design (`votv-ini-config-registry-DESIGN-2026-07-24.md` — DESIGN, **CONVERGED 2026-07-25**: pass 3 (rounds E1-E15 + confirmations E16-E19) closed every residual by measurement and ended in a genuine "that holds"; fact base F1-F46; the doc was rewritten again after pass 3. Certified; arcs 1+2 (one release) cleared to build; one priced product question ('стоит') open, does not gate) |
 | `_archive/` | definitively superseded/abandoned approaches (see below) |
 
 Grep tip: filenames were NOT renamed — a bare-filename citation (code comments cite findings by name)
