@@ -16,11 +16,11 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # CI runner 预装的是 Visual Studio 2022（17）。本地 BUILDING.md 的默认生成器是
-  # "Visual Studio 18 2026"；若以后 runners 升级到 VS 2026，把这里改成对应值即可
-  # （务必与 vcpkg 构建 protobuf 时使用的 MSVC 一致，否则链接期会出现
+  # VCPKG_ROOT / VCPKG_TRIPLET / BUILD_DIR 用于各步骤。生成器(VS 版本)不写死，
+  # 改由下方「Detect Visual Studio generator」步骤用 vswhere 动态探测，以自动匹配
+  # runner 上实际安装的 VS（2022 -> "Visual Studio 17 2022"，2026 -> "Visual Studio 18 2026"），
+  # 并确保与 vcpkg 构建 protobuf 时使用的 MSVC 一致（否则链接期会出现
   # 找不到 __std_*_trivial_N 之类的问题）。
-  VS_GENERATOR: "Visual Studio 17 2022"
   VCPKG_ROOT: "C:/vcpkg"
   VCPKG_TRIPLET: "x64-windows-static"
   BUILD_DIR: "build/votv-coop"
@@ -68,12 +68,12 @@ jobs:
       - name: Install vcpkg (clone + bootstrap + unshallow)
         shell: pwsh
         run: |
-          if (-not (Test-Path "$env:VCPKG_ROOT\.git")) {
-            git clone https://github.com/microsoft/vcpkg.git $env:VCPKG_ROOT
-            & "$env:VCPKG_ROOT\bootstrap-vcpkg.bat" -disableMetrics
+          if (-not (Test-Path "${{ env.VCPKG_ROOT }}\.git")) {
+            git clone https://github.com/microsoft/vcpkg.git ${{ env.VCPKG_ROOT }}
+            & "${{ env.VCPKG_ROOT }}\bootstrap-vcpkg.bat" -disableMetrics
             # 必须 unshallow，否则 manifest 安装历史 protobuf 3.21.12 端口会失败
             # （git read-tree ... exit code 128）
-            git -C $env:VCPKG_ROOT fetch --unshallow
+            git -C ${{ env.VCPKG_ROOT }} fetch --unshallow
           } else {
             Write-Host "vcpkg restored from cache"
           }
@@ -85,13 +85,30 @@ jobs:
           path: ${{ env.BUILD_DIR }}/vcpkg_installed
           key: vcpkg-installed-${{ hashFiles('src/votv-coop/vcpkg.json') }}-${{ runner.os }}
 
+      - name: Detect Visual Studio generator
+        id: vsgen
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          # 优先挑带 C++ 编译工具(VC.Tools)的最新 VS；拿不到再退而求其次取最新
+          $major = & $vswhere -latest -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property catalog_productLineVersion
+          if (-not $major) { $major = & $vswhere -latest -property catalog_productLineVersion }
+          $major = $major.Trim()
+          # 大版本号 -> 发布年份（BUILDING.md：VS 2026 对应 18）
+          $yearMap = @{ '16'='2019'; '17'='2022'; '18'='2026'; '19'='2029' }
+          $year = $yearMap[$major]
+          if (-not $year) { throw "Unrecognized Visual Studio major version: '$major'. 请在 yearMap 中补充年份映射。" }
+          $generator = "Visual Studio $major $year"
+          Write-Host "Detected Visual Studio generator: $generator"
+          "generator=$generator" | Out-File -Append $env:GITHUB_OUTPUT
+
       - name: Configure (CMake + vcpkg manifest 模式)
         shell: pwsh
         run: |
           cmake -S src/votv-coop -B ${{ env.BUILD_DIR }} `
-            -G "$env:VS_GENERATOR" -A x64 `
-            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
-            -DVCPKG_TARGET_TRIPLET=$env:VCPKG_TRIPLET `
+            -G "${{ steps.vsgen.outputs.generator }}" -A x64 `
+            -DCMAKE_TOOLCHAIN_FILE="${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET=${{ env.VCPKG_TRIPLET }} `
             -DVCPKG_MANIFEST_MODE=ON
 
       - name: Build (Release)
