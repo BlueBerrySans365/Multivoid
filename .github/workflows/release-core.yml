@@ -1,0 +1,158 @@
+# release-core -- the release lane's brain, ALWAYS executed from main
+# (the trampoline calls it @main; the recovery dispatch runs main's YAML by
+# construction). THIN ORCHESTRATOR (design D3): every refusal / lint /
+# predicate decision lives in tools/release/*.ps1 executed from the MAIN
+# checkout (checkout#2) -- the self-check below guards the JUDGE, not just the
+# evidence. The run logs workflow_ref/workflow_sha as evidence (not a gate --
+# a gate cannot guard itself; residual D7(a)).
+name: release-core
+
+on:
+  workflow_call:
+    inputs:
+      tag-name:
+        required: true
+        type: string
+      tag-sha:
+        description: caller's sha; EVIDENCE only -- the judge resolves the tag itself
+        required: false
+        type: string
+        default: ''
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: existing v* tag to (re)run (no-run recovery / refusal drills)
+        required: true
+        type: string
+
+concurrency:
+  group: release          # full serialization; a queued twin lands on ALREADY_PUBLISHED
+  cancel-in-progress: false
+
+permissions:
+  contents: write         # Release API only (D7); the v* tag ruleset blocks robot tags independently
+
+jobs:
+  judge:
+    name: Judge (refuse-to-publish predicate)
+    runs-on: windows-latest
+    outputs:
+      verdict: ${{ steps.judge.outputs.verdict }}
+      tag-name: ${{ steps.resolve.outputs.tag-name }}
+      tag-sha: ${{ steps.resolve.outputs.tag-sha }}
+    steps:
+      - name: Checkout main (checkout#2 -- the judge's own tree)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Self-check -- judge tree is origin/main HEAD
+        shell: pwsh
+        run: |
+          git fetch origin main
+          git fetch origin '+refs/tags/*:refs/tags/*'
+          $head = (git rev-parse HEAD).Trim()
+          $main = (git rev-parse origin/main).Trim()
+          Write-Host "judge HEAD   = $head"
+          Write-Host "origin/main  = $main"
+          Write-Host "workflow_ref = ${{ github.workflow_ref }} (evidence)"
+          Write-Host "workflow_sha = ${{ github.workflow_sha }} (evidence)"
+          if ($head -ne $main) { throw "judge checkout is not origin/main HEAD (main moved mid-run?) -- re-run" }
+
+      - name: Resolve tag
+        id: resolve
+        shell: pwsh
+        run: |
+          $tag = if ('${{ github.event_name }}' -eq 'workflow_dispatch') { '${{ inputs.tag }}' } else { '${{ inputs.tag-name }}' }
+          if (-not $tag) { throw 'no tag input' }
+          $sha = (git rev-list -n1 $tag).Trim()
+          if (-not $sha) { throw "tag '$tag' not found on origin" }
+          Write-Host "tag $tag -> $sha (caller evidence: '${{ inputs.tag-sha }}')"
+          "tag-name=$tag" | Out-File -Append $env:GITHUB_OUTPUT
+          "tag-sha=$sha"  | Out-File -Append $env:GITHUB_OUTPUT
+
+      - name: Tag-grammar fixture selftest
+        shell: pwsh
+        run: pwsh -File tools/release/tag_regex_selftest.ps1
+
+      - name: Ledger lint (ENFORCING on the release lane)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: pwsh -File tools/release/ledger_lint.ps1
+
+      - name: Judge -- full verdict vector (no short-circuit)
+        id: judge
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pwsh -File tools/release/judge.ps1 -TagName '${{ steps.resolve.outputs.tag-name }}' -TagShaEvidence '${{ steps.resolve.outputs.tag-sha }}'
+          $code = $LASTEXITCODE
+          switch ($code) {
+            0  { 'verdict=publish'           | Out-File -Append $env:GITHUB_OUTPUT }
+            10 { 'verdict=already_published' | Out-File -Append $env:GITHUB_OUTPUT }
+            default { exit 1 }
+          }
+
+      - name: Fingerprint gate (early refusal, pre-build)
+        if: steps.judge.outputs.verdict == 'publish'
+        shell: pwsh
+        run: pwsh -File tools/release/fingerprint.ps1 -Mode check
+
+  build:
+    name: Cacheless build of the tagged source
+    needs: judge
+    if: needs.judge.outputs.verdict == 'publish'
+    # Remote@main form on purpose (R22) -- same rule as the callers of this file.
+    uses: VOTV-MP/Multivoid/.github/workflows/build-core.yml@main
+    with:
+      ref: ${{ needs.judge.outputs.tag-sha }}
+      source-sha: ${{ needs.judge.outputs.tag-sha }}
+      use-cache: false
+
+  publish:
+    name: Draft-first publish + read-back
+    needs: [judge, build]
+    if: needs.judge.outputs.verdict == 'publish'
+    runs-on: windows-latest
+    steps:
+      - name: Checkout main (publish scripts)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: main
+
+      - name: Download build artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ${{ needs.build.outputs.artifact-name }}
+          path: _release_artifact
+
+      - name: Publish (draft -> assets -> sha256 verify -> flip -> read-back)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pwsh -File tools/release/publish.ps1 `
+            -TagName '${{ needs.judge.outputs.tag-name }}' `
+            -TagSha  '${{ needs.judge.outputs.tag-sha }}' `
+            -ArtifactDir _release_artifact
+          Get-Content _release_artifact/fingerprint-dump.json | Out-Host
+
+      - name: Summary
+        shell: pwsh
+        run: |
+          "## Release ${{ needs.judge.outputs.tag-name }}" | Out-File -Append $env:GITHUB_STEP_SUMMARY
+          "source: ${{ needs.judge.outputs.tag-sha }}" | Out-File -Append $env:GITHUB_STEP_SUMMARY
+          "Ritual: verify the release page, then append the 'published' ledger row (see publish log; STABLE also: master env + verify_latest.ps1)." | Out-File -Append $env:GITHUB_STEP_SUMMARY
+
+  already-published:
+    name: Completion no-op
+    needs: judge
+    if: needs.judge.outputs.verdict == 'already_published'
+    runs-on: windows-latest
+    steps:
+      - name: ALREADY_PUBLISHED
+        shell: pwsh
+        run: Write-Host 'ALREADY_PUBLISHED -- live release on the triggering tag with matching source; nothing to do (assets untouched).'

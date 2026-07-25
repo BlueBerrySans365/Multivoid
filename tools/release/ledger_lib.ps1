@@ -1,0 +1,162 @@
+# ledger_lib.ps1 -- shared primitives for the release lane (tag grammar, ledger
+# parse, the state(N) fold, proto extraction, release-body machine keys).
+# Dot-source this file; it defines functions only, no side effects.
+# Design of record: research/findings/tooling/votv-ci-autobuild-dev-release-DESIGN-2026-07-25.md (section 3 D3).
+
+Set-StrictMode -Version Latest
+
+# ONE tag grammar for the whole lane: v<game>-b<N>[-dev].
+# <game> = d.d.d + optional single letter (e.g. 0.9.0n); <N> = decimal, no leading zero.
+$script:TagRegex = '^v(?<game>\d+\.\d+\.\d+[a-z]?)-b(?<n>[1-9]\d*)(?<dev>-dev)?$'
+
+# Repo-relative path of the wire-revision header (kProtocolVersion) -- the same
+# file CMakeLists regex-parses for the build number.
+$script:ProtocolHeaderPath = 'src/votv-coop/include/coop/net/protocol.h'
+
+function Get-ReleaseTagRegex { $script:TagRegex }
+
+function ConvertFrom-ReleaseTag {
+    param([Parameter(Mandatory)][string]$TagName)
+    if ($TagName -cnotmatch $script:TagRegex) { return $null }   # -c: the grammar is case-SENSITIVE (PS -match is not)
+    [pscustomobject]@{
+        TagName = $TagName
+        Game    = $Matches['game']
+        N       = [int]$Matches['n']
+        Dev     = [bool]($Matches.ContainsKey('dev') -and $Matches['dev'])
+    }
+}
+
+# --- Ledger --------------------------------------------------------------
+# File format (tools/release/LEDGER.tsv): '#' comments and blank lines ignored;
+# every row = 6 tab-separated fields:  kind  N  game  tagName  sourceSha  date
+# kind in { consume | published | burn | retracted }. Append-only, HUMAN-written.
+
+function Read-Ledger {
+    param([Parameter(Mandatory)][string]$Path)
+    if (-not (Test-Path -LiteralPath $Path)) { throw "ledger not found: $Path" }
+    $rows = @(); $errors = @(); $lineNo = 0
+    foreach ($line in @(Get-Content -LiteralPath $Path)) {
+        $lineNo++
+        $t = $line.Trim()
+        if ($t -eq '' -or $t.StartsWith('#')) { continue }
+        $f = $t -split "`t+"
+        if ($f.Count -ne 6) { $errors += "line ${lineNo}: expected 6 tab-separated fields, got $($f.Count)"; continue }
+        $kind, $n, $game, $tagName, $sha, $date = $f
+        if ($kind -notin @('consume', 'published', 'burn', 'retracted')) { $errors += "line ${lineNo}: unknown kind '$kind'"; continue }
+        if ($n -notmatch '^[1-9]\d*$') { $errors += "line ${lineNo}: bad N '$n' (decimal, no leading zero)"; continue }
+        if ($sha -cnotmatch '^[0-9a-f]{40}$') { $errors += "line ${lineNo}: sourceSha must be a full lowercase 40-hex sha, got '$sha'"; continue }
+        if ($date -notmatch '^\d{4}-\d{2}-\d{2}$') { $errors += "line ${lineNo}: date must be YYYY-MM-DD, got '$date'"; continue }
+        $tag = ConvertFrom-ReleaseTag $tagName
+        if (-not $tag) { $errors += "line ${lineNo}: tagName '$tagName' fails the tag grammar"; continue }
+        if ($tag.N -ne [int]$n) { $errors += "line ${lineNo}: tagName N ($($tag.N)) != column N ($n)"; continue }
+        if ($tag.Game -ne $game) { $errors += "line ${lineNo}: tagName game ($($tag.Game)) != column game ($game)"; continue }
+        $rows += [pscustomobject]@{
+            Line = $lineNo; Kind = $kind; N = [int]$n; Game = $game
+            TagName = $tagName; SourceSha = $sha; Date = $date; Dev = $tag.Dev
+        }
+    }
+    [pscustomobject]@{ Rows = $rows; Errors = $errors }
+}
+
+# state(N) = fold of the ledger rows carrying N, in file order (design D3, R16/R19):
+#   consume {sha,game}  -> EXPECTED(sha, game)        (the mint expectation, in-flight)
+#   published           -> PUBLISHED                  (closed, API-free)
+#   burn / retracted    -> TERMINAL forever           (never republishes)
+# Grammar misuse (second consume over an unclosed mint, published without a
+# consume, burn over PUBLISHED, ...) lands in .Faults -- the lint fails on them;
+# the fold itself stays conservative (TERMINAL sticks, a bad consume never
+# overwrites an existing state).
+function Get-LedgerState {
+    param([Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Rows,
+          [Parameter(Mandatory)][int]$N)
+    $st = [pscustomobject]@{
+        N = $N; State = 'NONE'; SourceSha = $null; Game = $null; TagName = $null
+        TerminalClass = $null; ConsumeDate = $null; Faults = @()
+    }
+    foreach ($r in @($Rows | Where-Object { $_.N -eq $N })) {
+        switch ($r.Kind) {
+            'consume' {
+                if ($st.State -eq 'NONE') {
+                    $st.State = 'EXPECTED'; $st.SourceSha = $r.SourceSha; $st.Game = $r.Game
+                    $st.TagName = $r.TagName; $st.ConsumeDate = $r.Date
+                } else {
+                    $st.Faults += "line $($r.Line): consume over state $($st.State) for N=$N (ambiguous mint)"
+                }
+            }
+            'published' {
+                if ($st.State -eq 'TERMINAL') {
+                    $st.Faults += "line $($r.Line): published over TERMINAL for N=$N"
+                } else {
+                    if ($st.State -ne 'EXPECTED') {
+                        $st.Faults += "line $($r.Line): published without an open consume for N=$N (state was $($st.State))"
+                    } elseif ($r.SourceSha -ne $st.SourceSha -or $r.TagName -ne $st.TagName) {
+                        $st.Faults += "line $($r.Line): published row sha/tag disagrees with the consume row for N=$N"
+                    }
+                    $st.State = 'PUBLISHED'
+                }
+            }
+            'burn' {
+                if ($st.State -eq 'PUBLISHED') { $st.Faults += "line $($r.Line): burn over PUBLISHED for N=$N (bytes were public -- use retracted)" }
+                $st.State = 'TERMINAL'; $st.TerminalClass = 'burn'
+            }
+            'retracted' {
+                if ($st.State -notin @('PUBLISHED', 'EXPECTED')) { $st.Faults += "line $($r.Line): retracted with no publish/consume history for N=$N (state was $($st.State))" }
+                $st.State = 'TERMINAL'; $st.TerminalClass = 'retracted'
+            }
+        }
+    }
+    $st
+}
+
+# The newest BARE-tag row whose state(N) == PUBLISHED (fold-aware -- a retracted
+# N has a published row too; the terminal closes it; R23). Returns $null if no
+# stable has ever been published.
+function Get-NewestStablePublished {
+    param([Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Rows)
+    $cands = @($Rows | Where-Object { $_.Kind -eq 'published' -and -not $_.Dev })
+    for ($i = $cands.Count - 1; $i -ge 0; $i--) {
+        $st = Get-LedgerState -Rows $Rows -N $cands[$i].N
+        if ($st.State -eq 'PUBLISHED') { return $st }
+    }
+    $null
+}
+
+# --- Proto extraction ----------------------------------------------------
+
+# kProtocolVersion at a given commit, read via `git show` (no checkout needed).
+# Same regex family as CMakeLists.txt:30. Returns $null if absent/unparseable.
+function Get-ProtoAtCommit {
+    param([Parameter(Mandatory)][string]$Commitish, [string]$GitDir = '.')
+    $content = git -C $GitDir show "${Commitish}:$script:ProtocolHeaderPath" 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $content) { return $null }
+    $m = [regex]::Match(($content -join "`n"), 'kProtocolVersion\s*=\s*(\d+)')
+    if ($m.Success) { [int]$m.Groups[1].Value } else { $null }
+}
+
+# --- Release-body machine keys (R22) -------------------------------------
+# ONE format shared by the publish step, the completion check, and the
+# RELEASE.md template:  'source: <40hex>'  +  'sha256: <64hex>  <filename>'.
+
+function New-ReleaseBody {
+    param([Parameter(Mandatory)][string]$SourceSha,
+          [Parameter(Mandatory)][hashtable]$Sha256ByFile,   # filename -> 64-hex
+          [switch]$Dev,
+          [string[]]$ExtraLines = @())
+    $lines = @()
+    if ($Dev) { $lines += 'Development build -- not hands-on verified.' }
+    $lines += $ExtraLines
+    $lines += "source: $SourceSha"
+    foreach ($f in ($Sha256ByFile.Keys | Sort-Object)) {
+        $lines += "sha256: $($Sha256ByFile[$f].ToLowerInvariant())  $f"
+    }
+    $lines -join "`n"
+}
+
+# The completion check's parser: the 'source:' key, or $null if unparseable
+# (-> RELEASE_BODY_UNPARSEABLE, fail-closed; R22).
+function Get-ReleaseBodySource {
+    param([AllowEmptyString()][string]$Body)
+    if (-not $Body) { return $null }
+    $m = [regex]::Match($Body, '(?m)^source:\s*([0-9a-f]{40})\s*$')
+    if ($m.Success) { $m.Groups[1].Value } else { $null }
+}

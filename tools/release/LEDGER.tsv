@@ -1,0 +1,14 @@
+# Multivoid release ledger -- the SINGLE MINT AUTHORITY for build numbers
+# (dev AND stable). Append-only; HUMAN-written; lives in the repo's own
+# history because platform objects (tags, releases) are deletable and cannot
+# hold an append-only invariant. Tags/releases are drift detectors only.
+# Design: research/findings/tooling/votv-ci-autobuild-dev-release-DESIGN-2026-07-25.md section 3 D3.
+#
+# Row = 6 TAB-separated fields:
+#   kind	N	game	tagName	sourceSha	date
+# kind: consume   = mint expectation (written with the tag, pushed --atomic)
+#       published = human-appended closure after verifying the release page
+#       burn      = never-published number killed        (TERMINAL forever)
+#       retracted = published-then-deleted (bytes public) (TERMINAL forever)
+# TERMINAL rows are PUSH-IMMEDIATE; the published row may ride the next
+# leak-audited push. An empty ledger is a valid start.
