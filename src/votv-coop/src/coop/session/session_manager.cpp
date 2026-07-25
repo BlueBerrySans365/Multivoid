@@ -227,7 +227,7 @@ void RefreshLatestVersion() {
                     line = DisplayVersion() + " -- UPDATE " +
                            (info.mod.empty() ? ("b" + std::to_string(info.proto)) : info.mod) +
                            " AVAILABLE: " +
-                           (info.url.empty() ? "github.com/pelmentor/VOTV_MP/releases" : info.url);
+                           (info.url.empty() ? net::kReleasesUrl : info.url);
                 } else {
                     // We are NEWER than the master's latest (a dev build) -- informational.
                     line = DisplayVersion() + " (dev; latest released b" +
@@ -460,7 +460,7 @@ std::string VersionMismatchVerdict(const std::string& hostGame, int hostProto) {
         const bool hostNewer = hostProto > static_cast<int>(net::kProtocolVersion);
         return std::string("Mod build mismatch: host runs b") + std::to_string(hostProto) +
                ", you run b" + std::to_string(net::kProtocolVersion) + " -- " +
-               (hostNewer ? "update: github.com/pelmentor/VOTV_MP/releases"
+               (hostNewer ? std::string("update: ") + net::kReleasesUrl
                           : "the host needs to update.");
     }
     return {};

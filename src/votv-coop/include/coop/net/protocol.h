@@ -1113,6 +1113,12 @@ inline constexpr uint16_t kDefaultPort = 47621;
 inline constexpr const char* kOfficialMasterUrl    = "master.multivoid.dev:10443";
 inline constexpr const char* kOfficialSignalingUrl = "master.multivoid.dev:10000";
 
+// Where a human goes to fetch a newer build. ONE compiled constant for every
+// "update available" surface (session_manager latest-line fallback + the join
+// mismatch verdict) -- the s29b rebrand sweep missed the old URL precisely
+// because the literal was duplicated at two sites (design D9, 2026-07-25).
+inline constexpr const char* kReleasesUrl = "github.com/VOTV-MP/Multivoid/releases";
+
 // PR-2 v10 (2026-05-28): GNS owns handshake (Hello), graceful disconnect
 // (Bye), RTT (Ping/Pong), and reliable acks (ReliableAck). Those five
 // MsgType values are deleted per RULE 2 -- the underlying mechanism
