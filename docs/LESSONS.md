@@ -1540,7 +1540,12 @@ instead of re-excavating the same hole.** Born because the project dug the same 
   file's own "Readers take it too" comment is FALSE). A design doc had stated the rule once, for "the
   file", and three separate decisions leaned on it — including "insertion is a MOVE, never an ADD", which
   is **not** behaviour-preserving: moving one occurrence past another inverts a flag verdict. Count the
-  readers before writing any "how the file is read" fact; collapse duplicates BEFORE reordering. *Look
+  readers before writing any "how the file is read" fact; collapse duplicates BEFORE reordering.
+  **RESOLVED (pass 3, 2026-07-25, converged):** occurrence selection was UNIFIED — authoritative line =
+  first case-insensitive KEY occurrence, one rule for reader/writer/report; layers differ only in value
+  vocabulary; first-RECOGNIZED retired. Safety measured (zero ci collisions across all 109 keys). Bonus
+  find: today's case-sensitive writer can make the two readers disagree with ONE write (`Enabled=1` +
+  write `enabled` → EOF duplicate). *Look
   FIRST:* `memory/lesson_first_match_is_a_reader_property_not_a_format_property.md`
 - **When N incompatible readers already ship, no unification preserves them all — CHOOSE, then
   ENUMERATE.** Four truthiness readers coexist in `multivoid.ini` (`1|true|0|false` whole-line; `!= "0"`
@@ -1560,8 +1565,22 @@ instead of re-excavating the same hole.** Born because the project dug the same 
   other candidates failed the same test differently: `multivoid.log` has **no owner-reader** ("reported"
   with no reader is a fiction), and the loader's boot dialog is a different severity whose `Arm` is
   single-slot (a second message silently drops the first, `boot_warning_dialog.cpp:29-35`). Before picking
-  a surface, ask what turns it ON and whether the audience already looks there. *Look FIRST:*
+  a surface, ask what turns it ON and whether the audience already looks there. **Second instance one gate
+  DEEPER (2026-07-25):** the multiplayer menu itself is ini-gated (`multiplayer_menu_off`,
+  `multiplayer_menu.cpp:310`); the surface that survived measurement is the HUD root (`imgui_overlay` +
+  `hud` — zero ini reads, boot-installed `harness.cpp:469`). Grep the candidate's RENDER PATH for gates,
+  not just its label. *Look FIRST:*
   `memory/lesson_diagnostic_surface_gated_by_what_it_diagnoses.md`
+- **ABSENT/UNREADABLE conflation makes every mint-then-persist path destructive.** `ReadIniValue`
+  returns its default for BOTH "key absent" and "file unreadable" (`config.cpp:96-104`), and the guid
+  mint (`:407-434`) persists immediately on default — so a transient lock releasing between the failed
+  read and the write lets the fresh guid **overwrite the user's stored identity** (skin `:390-405` is
+  byte-identical; `:431` logs "persisted" unconditionally though the writer is `void` and aborts on
+  locks). Deeper: `fgets` NULL conflates EOF with stream error and the loops never check `ferror`
+  (`:99-102`) — a mid-stream failure verdicts every later key as authoritative-ABSENT. Fix shape: a
+  tri-state read (`value/ABSENT/UNREADABLE`, authority only on clean EOF; errno discriminates —
+  measured: locked=`EACCES` vs missing=`ENOENT`), mint gated on authoritative ABSENT, writer returns
+  `bool`. *Look FIRST:* `memory/lesson_absent_unreadable_conflation_makes_mint_paths_destructive.md`
 - **One file format, ONE parse primitive.** `multivoid.ini` is parsed by three different fixed buffers —
   `char[128]` (`LookupTriState`), `char[256]` (reader), `char[512]` (writer) — and a 380-char line
   already mints a **live phantom key in 2 of 4 real inis** (fgets splits it, the tail contains `=`). The
