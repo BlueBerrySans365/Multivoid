@@ -107,6 +107,19 @@ MAKE_SPAWN_CANCEL(OnRoachSummonPre,          "cockroachMaster.summonRoach")
 MAKE_SPAWN_CANCEL(OnRoachAddTimerPre,        "cockroachMaster.addRoachTimer")
 MAKE_SPAWN_CANCEL(OnRoachNestTimerPre,       "cockroachMaster.spawnNestTimer")
 MAKE_SPAWN_CANCEL(OnRoachCustomEventPre,     "cockroachMaster.CustomEvent")
+// Group B/C: boar invasion (timer-driven spawn) — host rolls, client suppresses.
+// Products: grayboar_C (Character) detected by npc_sync POST; ariral_shooter,
+// firetank in kWorldActorAllowlist.
+MAKE_SPAWN_CANCEL(OnBoarInvasionSpawnPre,     "boarInvasion.Spawn")
+// Group B/C: greenFire (tick-driven spawn, save-placed) — host rolls, client suppresses.
+// Product: greenfire_C (prop) mirrored via kAmbientPropSpawnMirrorClasses.
+MAKE_SPAWN_CANCEL(OnGreenFireTickPre,         "greenFireSpawner.ReceiveTick")
+// Group B/C: furfur altar (tick-driven spawn, save-placed) — host rolls, client suppresses.
+// Product: paranormalSpot_C (prop) mirrored via kAmbientPropSpawnMirrorClasses.
+MAKE_SPAWN_CANCEL(OnFurfurAltarTickPre,       "furfurAltarSpawner.ReceiveTick")
+// Group B/C: UFO dropper (timeline-driven drop) — host rolls, client suppresses.
+// Products: kerfurOmega (kNpcAllowlist), fallingBody_C/lampPost_C (kAmbientPropSpawnMirrorClasses).
+MAKE_SPAWN_CANCEL(OnUfoDropperDropPre,        "ufoDropper.Timeline_0__drop__EventFunc")
 
 #undef MAKE_SPAWN_CANCEL
 
@@ -132,6 +145,19 @@ CancelTarget g_cancelTargets[] = {
     {L"cockroachMaster_C",           L"addRoachTimer",   &OnRoachAddTimerPre,        false},
     {L"cockroachMaster_C",           L"spawnNestTimer",  &OnRoachNestTimerPre,       false},
     {L"cockroachMaster_C",           L"CustomEvent",     &OnRoachCustomEventPre,     false},
+    // Group B/C: boar invasion (timer-driven spawn) — host rolls, client suppresses.
+    // Products: grayboar_C (Character) detected by npc_sync POST; ariral_shooter,
+    // firetank in kWorldActorAllowlist.
+    {L"boarInvasion_C",            L"Spawn",           &OnBoarInvasionSpawnPre,     false},
+    // Group B/C: greenFire (tick-driven spawn, save-placed) — host rolls, client suppresses.
+    // Product: greenfire_C (prop) mirrored via kAmbientPropSpawnMirrorClasses.
+    {L"greenFireSpawner_C",        L"ReceiveTick",     &OnGreenFireTickPre,         false},
+    // Group B/C: furfur altar (tick-driven spawn, save-placed) — host rolls, client suppresses.
+    // Product: paranormalSpot_C (prop) mirrored via kAmbientPropSpawnMirrorClasses.
+    {L"furfurAltarSpawner_C",      L"ReceiveTick",     &OnFurfurAltarTickPre,       false},
+    // Group B/C: UFO dropper (timeline-driven drop) — host rolls, client suppresses.
+    // Products: kerfurOmega (kNpcAllowlist), fallingBody_C/lampPost_C (kAmbientPropSpawnMirrorClasses).
+    {L"ufoDropper_C",              L"Timeline_0__drop__EventFunc", &OnUfoDropperDropPre, false},
 };
 
 // ---- t1 PARK rows ----

@@ -1,0 +1,30 @@
+// coop/version.h -- GENERATED from version.h.in by CMake. Do NOT edit by hand.
+//
+// The mod's version identity is the PAPER-MINECRAFT PAIR (user decision
+// 2026-07-19): (game target, build number). No separate mod semver exists --
+// the old CMake project-VERSION semver was a hand-maintained axis nobody
+// bumped (the "forgot the semver bump" rot class); RULE 2 removed it whole.
+//
+//   game target  = kGameTarget below (CMakeLists.txt set(VOTVCOOP_GAME_TARGET)),
+//                  bumped when we adapt to a new VOTV cook.
+//   build number = coop::net::kProtocolVersion (protocol.h), the wire revision --
+//                  bumped by the standing wire-format rule, and by EVERY release
+//                  (the release checklist), so a released build number uniquely
+//                  names a released DLL. Display shape: "Multivoid 0.9.0n b122".
+//
+// Compatibility gate = byte-equality on BOTH components (the Minecraft shape:
+// the protocol number gates, the strings phrase the popup).
+
+#pragma once
+
+namespace coop::version {
+
+// Game version this build targets. Bumps when we adapt to a new VOTV cook.
+inline constexpr const char* kGameTarget = "0.9.0n";
+
+// Boot-banner label (the build number is appended at the log site -- protocol.h
+// owns it and this header must stay engine-independent).
+inline constexpr const char* kDisplayLabel =
+    "Multivoid (for VOTV Alpha 0.9.0n)";
+
+}  // namespace coop::version

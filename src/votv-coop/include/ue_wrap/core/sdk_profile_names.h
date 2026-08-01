@@ -149,6 +149,8 @@ inline constexpr const wchar_t* NpcClass_WispG        = L"wisp_g_C";
 inline constexpr const wchar_t* NpcClass_WispO        = L"wisp_o_C";
 inline constexpr const wchar_t* NpcClass_WispP        = L"wisp_p_C";
 inline constexpr const wchar_t* NpcClass_WispBlu      = L"wisp_blu_C";
+// Group B/C creatures (2026-07-10): boarInvasion products detected by npc_sync POST.
+inline constexpr const wchar_t* NpcClass_Grayboar      = L"grayboar_C";
 
 // Compact array for the allowlist resolver (Inc1 of Phase 5N1). Iterated
 // once at install time; each name resolved via R::FindClass + cached. The
@@ -181,6 +183,7 @@ inline constexpr const wchar_t* kNpcAllowlist[] = {
     NpcClass_WispO,
     NpcClass_WispP,
     NpcClass_WispBlu,
+    NpcClass_Grayboar,  // boarInvasion product (Character, host-detected via BeginDeferred POST)
 };
 inline constexpr size_t kNpcAllowlistSize = sizeof(kNpcAllowlist) / sizeof(kNpcAllowlist[0]);
 
@@ -235,6 +238,12 @@ inline constexpr const wchar_t* kAmbientPropSpawnMirrorClasses[] = {
     L"prop_food_pinecone_C",  // the scare: spawns high, drops, bounces, rolls / lies
     L"prop_stick_C",          // pineconeSpawner forage branch
     L"prop_crystal_C",        // pineconeSpawner forage branch
+    // Group B/C: greenFire, furfurAltar, ufoDropper products (2026-07-10).
+    // Host spawns these via BeginDeferred; client mirror via PropSpawn-by-eid.
+    L"greenfire_C",           // greenFireSpawner product (green flame anomaly)
+    L"paranormalSpot_C",      // furfurAltarSpawner product (paranormal spot in dirthole)
+    L"fallingBody_C",         // ufoDropper product (falling body drop)
+    L"lampPost_C",            // ufoDropper product (lamp post drop)
 };
 inline constexpr size_t kAmbientPropSpawnMirrorClassesSize =
     sizeof(kAmbientPropSpawnMirrorClasses) / sizeof(kAmbientPropSpawnMirrorClasses[0]);
