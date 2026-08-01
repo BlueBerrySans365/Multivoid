@@ -162,12 +162,14 @@ void OnReliable(const coop::net::DroneStatePayload& payload) {
     // Interaction gate: write canTakeOff (THE gate) + hasSack (option prerequisite) onto the mirror so
     // a parked drone is interactable instead of "in motion" (the suppressed tick never sets them).
     D::WriteGateFields(drone, canTakeOff, hasSack);
-    if (hasSack)
-        D::RepointContainer(drone);  // cargo aboard -> point the mirror at the prop-mirrored container.
-                                     // EVERY hasSack packet (not just the rising edge): the container
-                                     // may stream in AFTER the edge, or be destroyed+respawned (new
-                                     // address) -- RepointContainer short-circuits when the field is
-                                     // already a live container, so steady-state cost is ~one deref.
+    if (hasSack) {
+        D::RepointContainer(drone);  // cargo aboard -> point at the prop-mirrored cargo container.
+                                     // EVERY hasSack packet: container may stream in late or be
+                                     // destroyed+respawned. RepointContainer re-validates even when
+                                     // the field is already live (wrong ptr = personal inventory bug).
+    } else if (ob & D::kFxHasSack) {
+        D::ClearContainer(drone);    // cargo gone (departing edge) -> drop stale container pointer.
+    }
 
     // Dust (v69): replay the BP's per-tick dust update EVERY packet, not on bit
     // edges -- the anchor moves with the drone, the intensity tracks ground
@@ -219,6 +221,9 @@ void Tick() {
     if (s->role() == coop::net::Role::Host) {
         // HOST authority: stream the transform while the drone is Active; emit one falling-edge
         // inactive so the client's active flag is accurate (it already holds the last pose).
+        // Guard container pointer before cargo compile/sell paths touch it (personal-inv bug).
+        if (D::IsActive(drone) || (D::ReadFxBits(drone) & D::kFxHasSack))
+            D::EnsureDroneContainer(drone);
         const bool active = D::IsActive(drone);
         const uint64_t nowMs = NowMs();
         if (active) {

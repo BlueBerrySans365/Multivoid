@@ -46,9 +46,13 @@ using coop::net::WireKeyFromString;
 using coop::net::StringFromWireKey;
 using coop::net::FnvKey;
 
-constexpr auto     kRebuildThrottle = std::chrono::seconds(2);
-constexpr uint64_t kSendIntervalMs  = 50;   // ~20 Hz occupant stream while seated
-constexpr int      kInterpWindowMs  = 75;   // matches the NPC pose interp window
+constexpr auto     kRebuildThrottleActive = std::chrono::seconds(2);
+constexpr auto     kRebuildThrottleIdle   = std::chrono::seconds(30);  // no driver/grabber anywhere
+constexpr uint64_t kSendIntervalMs        = 50;    // ~20 Hz while the ATV is moving
+constexpr uint64_t kSendKeepaliveMs       = 250;   // ~4 Hz keepalive while seated/stationary
+constexpr int      kInterpWindowMs        = 75;    // matches the NPC pose interp window
+constexpr float    kPoseDeltaPosCm        = 1.f;   // skip a stream packet if pose unchanged within this
+constexpr float    kPoseDeltaAngDeg       = 0.5f;
 
 // Per-ATV state: the resolved index (actor/idx) + the receiver-side interp (LerpWindow + cur/
 // target/error for pos + full rotation) + the sender throttle. All game-thread only.

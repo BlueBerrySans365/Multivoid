@@ -6,6 +6,7 @@
 
 #include "ue_wrap/devices/drone.h"
 
+#include "ue_wrap/actors/prop.h"
 #include "ue_wrap/core/call.h"
 #include "ue_wrap/engine/engine.h"
 #include "ue_wrap/core/fname_utils.h"
@@ -64,6 +65,66 @@ int32_t g_hasSackOff   = -1;   // Adrone_C::hasSack   @0x0501
 int32_t g_containerOff = -1;   // Adrone_C::container @0x04F8 (Aprop_inventoryContainer_drone_C*)
 constexpr int32_t kHasSackFallback   = 0x0501;
 constexpr int32_t kContainerFallback = 0x04F8;
+
+// prop_container_C::propInventory -- resolved lazily (NOT drone.container@0x04F8).
+int32_t g_propInvOff     = -1;
+int32_t g_invIndexOff    = -1;
+int32_t g_invPlayerOff   = -1;
+constexpr int32_t kPropInvFallback   = 0x0398;
+constexpr int32_t kInvIndexFallback  = 0x00B0;
+constexpr int32_t kInvPlayerFallback = 0x00F9;
+
+bool EnsureContainerOffsets() {
+    if (g_propInvOff >= 0) return true;
+    void* cls = R::FindClass(L"prop_container_C");
+    if (!cls) return false;
+    g_propInvOff = R::FindPropertyOffset(cls, L"propInventory");
+    if (g_propInvOff < 0) g_propInvOff = kPropInvFallback;
+    void* invCls = R::FindClass(L"propInventory_C");
+    if (invCls) {
+        g_invIndexOff  = R::FindPropertyOffset(invCls, L"Index");
+        g_invPlayerOff = R::FindPropertyOffset(invCls, L"Player");
+    }
+    if (g_invIndexOff < 0)  g_invIndexOff  = kInvIndexFallback;
+    if (g_invPlayerOff < 0) g_invPlayerOff = kInvPlayerFallback;
+    return true;
+}
+
+// True iff `containerActor` is a world (non-personal) drone cargo container we may open/sell through.
+// GObjStack[0] + Player==true is the local player's personal inventory -- pointing the drone at
+// that container shows/sells EVERYTHING in personal storage (the reported bug).
+bool IsValidDroneCargoContainer(void* containerActor) {
+    if (!containerActor || !R::IsLive(containerActor) || !EnsureContainerOffsets()) return false;
+    void* inv = *reinterpret_cast<void**>(
+        reinterpret_cast<char*>(containerActor) + g_propInvOff);
+    if (!inv || !R::IsLive(inv)) return false;
+    const int32_t idx = *reinterpret_cast<int32_t*>(
+        reinterpret_cast<char*>(inv) + g_invIndexOff);
+    const bool isPlayer = *reinterpret_cast<uint8_t*>(
+        reinterpret_cast<char*>(inv) + g_invPlayerOff) != 0;
+    if (isPlayer || idx <= 0)
+        return false;  // reject personal inventory (Index==0, Player==true) and uninit (-1)
+    return true;
+}
+
+// Resolve the authoritative drone cargo container. Prefer the world-placed save actor
+// (key 'drone_InventoryContainer'); fall back to any live prop_inventoryContainer_drone_C
+// that passes IsValidDroneCargoContainer. The drone's BeginPlay looks up 'droneContainer'
+// (a different key) and may spawn a duplicate with Index==0 -- never use that one.
+void* FindDroneCargoContainer() {
+    if (!EnsureContainerOffsets()) return nullptr;
+    // 1. World-placed save container (the compileOrder/sell write target on a correct save).
+    if (void* keyed = ue_wrap::prop::FindByKeyString(L"drone_InventoryContainer"))
+        if (IsValidDroneCargoContainer(keyed)) return keyed;
+    // 2. Alternate key the drone BP looks up (exact match only -- rarely present).
+    if (void* alt = ue_wrap::prop::FindByKeyString(L"droneContainer"))
+        if (IsValidDroneCargoContainer(alt)) return alt;
+    // 3. Scan all drone-container class instances; pick the first valid non-personal one.
+    for (void* c : R::FindObjectsByClass(L"prop_inventoryContainer_drone_C")) {
+        if (IsValidDroneCargoContainer(c)) return c;
+    }
+    return nullptr;
+}
 
 bool EnsureFxResolved() {
     if (g_fxResolved) return true;
@@ -314,35 +375,44 @@ void WriteGateFields(void* drone, bool canTakeOff, bool hasSack) {
         *reinterpret_cast<bool*>(reinterpret_cast<char*>(drone) + g_hasSackOff) = hasSack;
 }
 
+void ClearContainer(void* drone) {
+    if (!drone || !EnsureFxResolved() || g_containerOff < 0) return;
+    void** slot = reinterpret_cast<void**>(reinterpret_cast<char*>(drone) + g_containerOff);
+    if (*slot) {
+        UE_LOGI("drone: cleared container @0x%04X (was %p)", g_containerOff, *slot);
+        *slot = nullptr;
+    }
+}
+
 void RepointContainer(void* drone) {
     if (!drone || !EnsureFxResolved() || g_containerOff < 0) return;
     // openPropInv(container) reads the mirror drone's OWN container@0x04F8, which the suppressed tick
-    // never populates. The container actor itself (Aprop_inventoryContainer_drone_C, keyed
-    // 'droneContainer') is already mirrored by the prop pipeline -- find it + point the field at it so
-    // the inventory opens. Idempotent: only writes when the field is null + the actor exists.
+    // never populates. Find the prop-mirrored cargo container and point the field at it.
     void** slot = reinterpret_cast<void**>(reinterpret_cast<char*>(drone) + g_containerOff);
-    if (*slot && R::IsLive(*slot)) return;  // already pointed at a live container
-    if (void* c = R::FindObjectByClass(L"prop_inventoryContainer_drone_C")) {
-        // SAFETY: verify this is NOT the player's personal inventory container. The player's
-        // inventory is GObjStack[0] (propInventory.Index == 0, propInventory.Player == true).
-        // If the drone container somehow has Index == 0, pointing at it would show the player's
-        // entire inventory in the drone bag UI. Reject containers with Index == 0.
-        if (void* invComp = *reinterpret_cast<void**>(
-                reinterpret_cast<char*>(c) + 0x04F8)) {  // prop_container_C.propInventory @0x04F8
-            if (R::IsLive(invComp)) {
-                // propInventory_C.Index @0x00B0 (from CXXHeaderDump/propInventory.hpp)
-                const int32_t idx = *reinterpret_cast<int32_t*>(
-                    reinterpret_cast<char*>(invComp) + 0x00B0);
-                if (idx == 0) {
-                    UE_LOGW("drone: RepointContainer REJECTED container %p (Index==0, "
-                            "this is the player's personal inventory) -- not repointing", c);
-                    return;
-                }
-            }
-        }
+    // Re-validate even when already set -- a stale/wrong pointer (personal inv) must be corrected.
+    if (*slot && R::IsLive(*slot) && IsValidDroneCargoContainer(*slot)) return;
+    void* c = FindDroneCargoContainer();
+    if (!c) {
+        UE_LOGW("drone: RepointContainer -- no valid drone cargo container found");
+        return;
+    }
+    if (*slot != c) {
         *slot = c;
-        UE_LOGI("drone: repointed mirror container @0x%04X -> %p (prop-mirrored 'droneContainer')",
-                g_containerOff, c);
+        UE_LOGI("drone: repointed container @0x%04X -> %p key='%ls'",
+                g_containerOff, c, ue_wrap::prop::GetInteractableKeyString(c).c_str());
+    }
+}
+
+void EnsureDroneContainer(void* drone) {
+    if (!drone || !EnsureFxResolved() || g_containerOff < 0) return;
+    void** slot = reinterpret_cast<void**>(reinterpret_cast<char*>(drone) + g_containerOff);
+    if (*slot && R::IsLive(*slot) && IsValidDroneCargoContainer(*slot)) return;
+    void* c = FindDroneCargoContainer();
+    if (!c) return;
+    if (*slot != c) {
+        UE_LOGW("drone: EnsureDroneContainer fixed bad container %p -> %p key='%ls'",
+                *slot, c, ue_wrap::prop::GetInteractableKeyString(c).c_str());
+        *slot = c;
     }
 }
 

@@ -95,4 +95,11 @@ void WriteGateFields(void* drone, bool canTakeOff, bool hasSack);
 // container (Aprop_inventoryContainer_drone_C) so openPropInv opens it. Idempotent. Game thread.
 void RepointContainer(void* drone);
 
+// Clear the mirror drone's container pointer (call when cargo is gone / drone departing).
+void ClearContainer(void* drone);
+
+// HOST+CLIENT: validate drone.container points at a non-personal cargo container; fix if wrong.
+// Prevents compileOrder/sell from writing through GObjStack[0] (personal inventory). Game thread.
+void EnsureDroneContainer(void* drone);
+
 }  // namespace ue_wrap::drone
