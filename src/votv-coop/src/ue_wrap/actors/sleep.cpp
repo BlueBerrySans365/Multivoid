@@ -433,9 +433,9 @@ bool GetDreamPlayerSpawn(void* dream, float& x, float& y, float& z) {
     // Return value is FVector at ReturnValue
     ue_wrap::FVector retVec{};
     if (!f.GetRaw(L"ReturnValue", &retVec, sizeof(ue_wrap::FVector))) return false;
-    x = retVec.x;
-    y = retVec.y;
-    z = retVec.z;
+    x = retVec.X;
+    y = retVec.Y;
+    z = retVec.Z;
     return true;
 }
 
