@@ -705,7 +705,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // + replays them in ConnectReplayForSlot. mainPlayer.holding_actor with an Aprop_C no
 // longer feeds the PropSpawn/PropPose path (the trash clump/pile carry -- the
 // non-Aprop_C holding_actor case -- stays on its lane untouched).
-inline constexpr uint16_t kProtocolVersion = 136; // v136 (2026-08-01, ATV Phase 2: AtvStatePayload grows 60->68B (+fuel +health +engineOn +broken stateBits), AtvExplode=123 ONE-SHOT VFX trigger). Prior: v135 (2026-07-31, consume b133: chat HISTORY + the roster ledger/player list + host-assigned unique nicknames persisted to ini + real UTF-8 across every text surface (imgui 1.92.9 lazy atlas, +4,741 codepoints and the combining marks) + the CURSOR fix (ScaleAllSizes truncated MouseCursorScale to 0) + GitHub issue #5 (the overlay stops taking keys the GAME is typing: the predicate is now the game's own IsValid(activeInterface) guard, and the focus backstop asks about USER 0 so WidgetInteraction's virtual user cannot latch it) + the chat send-flicker and nameplate centring/host-ping fixes. No wire-format change in the b133 range; the bump is the release rule + the Paper-pair build number). Prior: v133 (2026-07-29, CHAT HISTORY -- +ChatLine=119 +ChatSpeaker=120, and ChatMessage=48 becomes client->host ONLY (out of IsClientRelayableReliableKind, RULE 2). Chat inverts from host-RELAYED to host-AUTHORED: the lobby now has a chat RECORD with a host-assigned lineSeq that IS the total order every peer sorts by, and a joiner is SEEDED from it. The relay could not carry this -- it fires on the NET thread at receive time, before the game thread where a lineSeq could be assigned even exists, so at relay time the order does not yet exist. A parse change AND a release, so the Paper-pair build number moves with it). Prior: v132 (2026-07-28, ARC B -- the HOST is the canonical namer: a Join's nick is ARBITRATED before it enters the ledger, and the assignment reaches the named peer on its own RosterRow (whose nick already sat in the FIXED PREFIX above the applyDeclared gate for exactly this). The row FORMAT is unchanged -- what changed is who authors the value and that the named peer KEEPS it: per the user's 2026-07-28 decision the assigned name is written back to multivoid.ini, so the next session asks to be called Pelmentor2 and keeps it unless someone else already is. The bump is the release rule + the Paper-pair build number, not a parse change). Prior: v131 (2026-07-28: RosterRow FIXED PREFIX widened -- +[u8 linkKind][i16 pingMs] after eid, so the HOST publishes how every player is connected to the SESSION and every board renders the same value for the same player. Retires the per-viewer derivation that answered transport on some rows and ROUTE ("VIA HOST") on others, in one column, side by side; retires the client-side rttMsForSlot fan-out to nameplates, which could only ever measure the host link. The fields sit in the FIXED PREFIX because the tail's offset arithmetic lives inside the applyDeclared block, which is skipped for exactly the host row and the receiver's own row). Prior: v130 (2026-07-27, arc A: PlayerJoined WIDENED + renamed RosterRow -- +uint16 playerNo, admits slot 0 and the receiver's own slot, playerNo 0 = slot empty. The roster ledger is now the single presence authority; a client's TAB used to list only itself and the host). Prior: v129 (2026-07-26, consume b128: DX12 overlay renderer + Graphics API indicator + Tidy-up fix + the release notes/install pipeline); v128 (consume b127, the WHOLE ini workstream -- arc 3 const Row& ratchet + arc 4 T8 catalog); v127 (consume b126, arcs 1+2); v126 (consume b125, drill-matrix, retracted); v125 (2026-07-22, R11b container extraction):
+inline constexpr uint16_t kProtocolVersion = 137; // v137 (2026-08-01, Dream sync: DreamSpawn=124 + DreamEnd=125, shared dream experience with host-authoritative selection). Prior: v136 (2026-07-31, consume b133: chat HISTORY + the roster ledger/player list + host-assigned unique nicknames persisted to ini + real UTF-8 across every text surface (imgui 1.92.9 lazy atlas, +4,741 codepoints and the combining marks) + the CURSOR fix (ScaleAllSizes truncated MouseCursorScale to 0) + GitHub issue #5 (the overlay stops taking keys the GAME is typing: the predicate is now the game's own IsValid(activeInterface) guard, and the focus backstop asks about USER 0 so WidgetInteraction's virtual user cannot latch it) + the chat send-flicker and nameplate centring/host-ping fixes. No wire-format change in the b133 range; the bump is the release rule + the Paper-pair build number). Prior: v133 (2026-07-29, CHAT HISTORY -- +ChatLine=119 +ChatSpeaker=120, and ChatMessage=48 becomes client->host ONLY (out of IsClientRelayableReliableKind, RULE 2). Chat inverts from host-RELAYED to host-AUTHORED: the lobby now has a chat RECORD with a host-assigned lineSeq that IS the total order every peer sorts by, and a joiner is SEEDED from it. The relay could not carry this -- it fires on the NET thread at receive time, before the game thread where a lineSeq could be assigned even exists, so at relay time the order does not yet exist. A parse change AND a release, so the Paper-pair build number moves with it). Prior: v132 (2026-07-28, ARC B -- the HOST is the canonical namer: a Join's nick is ARBITRATED before it enters the ledger, and the assignment reaches the named peer on its own RosterRow (whose nick already sat in the FIXED PREFIX above the applyDeclared gate for exactly this). The row FORMAT is unchanged -- what changed is who authors the value and that the named peer KEEPS it: per the user's 2026-07-28 decision the assigned name is written back to multivoid.ini, so the next session asks to be called Pelmentor2 and keeps it unless someone else already is. The bump is the release rule + the Paper-pair build number, not a parse change). Prior: v131 (2026-07-28: RosterRow FIXED PREFIX widened -- +[u8 linkKind][i16 pingMs] after eid, so the HOST publishes how every player is connected to the SESSION and every board renders the same value for the same player. Retires the per-viewer derivation that answered transport on some rows and ROUTE ("VIA HOST") on others, in one column, side by side; retires the client-side rttMsForSlot fan-out to nameplates, which could only ever measure the host link. The fields sit in the FIXED PREFIX because the tail's offset arithmetic lives inside the applyDeclared block, which is skipped for exactly the host row and the receiver's own row). Prior: v130 (2026-07-27, arc A: PlayerJoined WIDENED + renamed RosterRow -- +uint16 playerNo, admits slot 0 and the receiver's own slot, playerNo 0 = slot empty. The roster ledger is now the single presence authority; a client's TAB used to list only itself and the host). Prior: v129 (2026-07-26, consume b128: DX12 overlay renderer + Graphics API indicator + Tidy-up fix + the release notes/install pipeline); v128 (consume b127, the WHOLE ini workstream -- arc 3 const Row& ratchet + arc 4 T8 catalog); v127 (consume b126, arcs 1+2); v126 (consume b125, drill-matrix, retracted); v125 (2026-07-22, R11b container extraction):
                                                   // ContainerContents becomes BIDIRECTIONAL and its
                                                   // blob gains a baseHash. A client now AUTHORS the
                                                   // world container it mutated (presser-authored
@@ -2670,6 +2670,17 @@ enum class ReliableKind : uint8_t {
                         //     (NOT calling explode() which re-impulses + ejects). Rides
                         //     the same Normal lane as AtvState (in-order: health->0 then
                         //     the explosion edge). Payload: AtvExplodePayload.
+    DreamSpawn = 124,   // v137 (sleep_sync dream): HOST->ALL dream spawn announcement.
+                        //     When the host's nightmare roll succeeds, it broadcasts this
+                        //     to all clients with the selected dream class name + the
+                        //     dream's playerSpawn location. Clients spawn a mirror copy of
+                        //     the dream class and teleport into it. Each player has their
+                        //     own copy of dream actors in the same pocket dimension; players
+                        //     see each other via puppet mirrors. Payload: DreamSpawnPayload.
+    DreamEnd = 125,     // v137 (sleep_sync dream): HOST->ALL dream end announcement.
+                        //     When the host's dream ends (leaveDream), it broadcasts this
+                        //     to all clients. Clients exit their dream mirrors and teleport
+                        //     back to their saved pre-dream position. Payload: DreamEndPayload.
     // Slots 21/22 (HeldClumpGrab/Release) RETIRED 2026-06-03 (v26, RULE 2): the v25
     // hand-attach model for the trash clump was the wrong shape (VOTV carries the
     // clump via the physics grab, floating in front, like the mannequin -- not
@@ -3624,6 +3635,31 @@ struct SleepStatePayload {
     uint8_t total;  // 1 -- Tally: world-ready peers
 };
 static_assert(sizeof(SleepStatePayload) == 4, "SleepStatePayload must be 4 bytes");
+
+// v137 (2026-08-01): HOST->ALL dream spawn announcement (see ReliableKind::DreamSpawn).
+// When the host's nightmare roll succeeds, it broadcasts this to all clients with the selected
+// dream class name + the dream's playerSpawn location. Clients spawn a mirror copy of the dream
+// class and teleport into it. Each player has their own copy of dream actors in the same pocket
+// dimension; players see each other via puppet mirrors. coop/sleep_sync.
+struct DreamSpawnPayload {
+    WireClassName dreamClass;           // 64 -- "dream_fill_C" etc. (validated descendant of dreamBase_C)
+    float         spawnX, spawnY, spawnZ;  // 12 -- dream's playerSpawn component world location (cm)
+    float         preDreamX, preDreamY, preDreamZ;  // 12 -- host's pre-dream position (for reference;
+                                                     //      each client saves its own local pre-dream xform)
+    float         preDreamPitch, preDreamYaw, preDreamRoll;  // 12 -- host's pre-dream rotation
+};
+static_assert(sizeof(DreamSpawnPayload) == 100, "DreamSpawnPayload must be 100 bytes");
+static_assert(sizeof(DreamSpawnPayload) <= 256 - 20 - 8,
+              "DreamSpawnPayload must fit in one reliable datagram (kMaxReliablePayload)");
+
+// v137 (2026-08-01): HOST->ALL dream end announcement (see ReliableKind::DreamEnd).
+// When the host's dream ends (leaveDream), it broadcasts this to all clients. Clients exit their
+// dream mirrors and teleport back to their saved pre-dream position. coop/sleep_sync.
+struct DreamEndPayload {
+    uint8_t _pad;  // 1 -- signal-only; the client already knows it's dreaming (g_inDream flag)
+                   //      and has saved its own pre-dream transform.
+};
+static_assert(sizeof(DreamEndPayload) == 1, "DreamEndPayload must be 1 byte (signal-only)");
 
 // v95: HOST->ALL "a scripted/story event fired" (ReliableKind::EventFire). Origin = the host's
 // passEvents growth poll (scheduler fires) or the F1 dev menu at dispatch (a direct runEvent

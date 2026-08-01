@@ -8,6 +8,7 @@
 
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/actors/sleep.h"
+#include "ue_wrap/core/reflection.h"
 
 #include <atomic>
 #include <cstdio>
@@ -16,6 +17,7 @@ namespace coop::sleep_sync {
 namespace {
 
 namespace SLP = ue_wrap::sleep;
+namespace R = ue_wrap::reflection;
 
 std::atomic<coop::net::Session*> g_session{nullptr};
 
@@ -25,6 +27,12 @@ bool g_waitUndone = false;      // WAITING enforcement latch (dilation undone fo
 bool g_accelerate = false;      // the 20x phase is on (host decides; mirrored from the wire on clients)
 bool g_dreamProbSuppressed = false;  // we hold gamemode.dreamProbability at 0
 void* g_gmInst = nullptr;       // gamemode instance the policy/edge state was applied to
+
+// ---- dream sync state (v137) -----------------------------------------------
+bool g_lastDreaming = false;    // the dreaming edge detector
+bool g_inDream = false;         // we are currently in a dream (client mirror)
+void* g_dreamActor = nullptr;   // the spawned dream actor (client mirror; K2 on exit)
+float g_preDreamX = 0, g_preDreamY = 0, g_preDreamZ = 0;  // saved pre-dream position (client)
 
 // ---- host tally -------------------------------------------------------------
 bool g_inBed[coop::net::kMaxPeers] = {};
@@ -188,6 +196,13 @@ void Tick() {
         g_accelerate = false;
         for (bool& b : g_inBed) b = false;
         g_lastCount = g_lastTotal = 0;
+        // Dream sync: reset dream state on gamemode change
+        g_lastDreaming = false;
+        g_inDream = false;
+        if (g_dreamActor) {
+            SLP::DestroyDreamActor(g_dreamActor);
+            g_dreamActor = nullptr;
+        }
         if (s->connected()) ApplyDreamProbPolicy(s);
     }
 
@@ -246,6 +261,65 @@ void Tick() {
         float need = 0.f;
         if (SLP::ReadSleepNeed(need) && need > 98.f) SLP::WriteSleepNeed(98.f);
     }
+
+    // ---- dream sync edge detection (v137) ----
+    // HOST: detect dreaming rising edge -> broadcast DreamSpawn to all clients.
+    // The nightmare roll calls wakeup() (isSleep=false) THEN createDream()
+    // (dreaming=true) in the same ubergraph call. The END was already sent
+    // (isSleep falling edge above). Now detect dreaming and broadcast.
+    const bool dreaming = SLP::IsDreaming();
+    if (dreaming != g_lastDreaming) {
+        g_lastDreaming = dreaming;
+        if (IsHost(s) && dreaming) {
+            // Host entered a dream -> broadcast DreamSpawn to all clients.
+            // Find the live dream actor by walking the GUObjectArray for
+            // the most recent AdreamBase_C subclass instance.
+            static void* sDreamBaseCls = nullptr;
+            if (!sDreamBaseCls) sDreamBaseCls = R::FindClass(L"dreamBase_C");
+            void* dreamActor = nullptr;
+            std::wstring dreamClassName;
+            if (sDreamBaseCls) {
+                const int32_t n = R::NumObjects();
+                for (int32_t i = n - 1; i >= 0; --i) {  // reverse: newest first
+                    void* obj = R::ObjectAt(i);
+                    if (!obj || !R::IsLive(obj)) continue;
+                    void* cls = R::ClassOf(obj);
+                    if (!cls || !R::IsDescendantOfAny(cls, &sDreamBaseCls, 1)) continue;
+                    if (R::NameStartsWith(R::NameOf(obj), L"Default__")) continue;
+                    dreamActor = obj;
+                    dreamClassName = R::ToString(R::NameOf(cls));
+                    break;
+                }
+            }
+            if (dreamActor && !dreamClassName.empty()) {
+                coop::net::DreamSpawnPayload dp{};
+                // Fill WireClassName from the wide string
+                dp.dreamClass.len = 0;
+                for (size_t i = 0; i < dreamClassName.size() && i < sizeof(dp.dreamClass.data); ++i)
+                    dp.dreamClass.data[dp.dreamClass.len++] = static_cast<char>(dreamClassName[i]);
+                // Get playerSpawn location from the dream actor
+                float dsx = 0, dsy = 0, dsz = 0;
+                if (SLP::GetDreamPlayerSpawn(dreamActor, dsx, dsy, dsz)) {
+                    dp.spawnX = dsx; dp.spawnY = dsy; dp.spawnZ = dsz;
+                }
+                // Save host's pre-dream position
+                SLP::GetPlayerPreDream(dp.preDreamX, dp.preDreamY, dp.preDreamZ,
+                                       dp.preDreamPitch, dp.preDreamYaw, dp.preDreamRoll);
+                s->SendReliable(coop::net::ReliableKind::DreamSpawn, &dp, sizeof(dp));
+                g_inDream = true;
+                UE_LOGI("sleep_sync: HOST entered dream -- DreamSpawn broadcast (class='%ls')",
+                        dreamClassName.c_str());
+            } else {
+                UE_LOGW("sleep_sync: HOST dreaming but no live dreamBase_C found");
+            }
+        } else if (IsHost(s) && !dreaming && g_inDream) {
+            // Host's dream ended (dreaming fell) -> broadcast DreamEnd to all clients.
+            coop::net::DreamEndPayload ep{};
+            s->SendReliable(coop::net::ReliableKind::DreamEnd, &ep, sizeof(ep));
+            g_inDream = false;
+            UE_LOGI("sleep_sync: HOST left dream -- DreamEnd broadcast");
+        }
+    }
 }
 
 void OnReliable(const coop::net::SleepStatePayload& p, uint8_t senderSlot) {
@@ -275,6 +349,84 @@ void OnReliable(const coop::net::SleepStatePayload& p, uint8_t senderSlot) {
     default:
         break;
     }
+}
+
+void OnDreamSpawn(const coop::net::DreamSpawnPayload& p, uint8_t senderSlot) {
+    auto* s = g_session.load(std::memory_order_acquire);
+    if (!s) return;
+    if (IsHost(s)) return;  // host doesn't mirror its own dream
+    if (senderSlot != 0) return;  // host-only
+
+    // Convert WireClassName to wide string
+    wchar_t className[65]{};
+    const uint8_t n = p.dreamClass.len <= sizeof(p.dreamClass.data)
+                          ? p.dreamClass.len
+                          : static_cast<uint8_t>(sizeof(p.dreamClass.data));
+    for (uint8_t i = 0; i < n; ++i)
+        className[i] = static_cast<wchar_t>(static_cast<unsigned char>(p.dreamClass.data[i]));
+    if (className[0] == L'\0') {
+        UE_LOGW("sleep_sync: OnDreamSpawn empty class -- dropping");
+        return;
+    }
+
+    // Already in a dream? Skip (idempotent / re-announce guard).
+    if (g_inDream && g_dreamActor) return;
+
+    // Save our pre-dream position (wherever we are now -- the bed position after END)
+    float px = 0, py = 0, pz = 0, pqx = 0, pqy = 0, pqz = 0, pqw = 1.f;
+    SLP::GetPlayerPreDream(px, py, pz, pqx, pqy, pqz, pqw);  // best-effort
+    g_preDreamX = px; g_preDreamY = py; g_preDreamZ = pz;
+
+    // Spawn the dream actor
+    g_dreamActor = SLP::SpawnDreamActor(className);
+    if (!g_dreamActor) {
+        UE_LOGW("sleep_sync: OnDreamSpawn SpawnDreamActor failed for '%ls'", className);
+        return;
+    }
+
+    // Get the dream's playerSpawn location and teleport there
+    float sx = p.spawnX, sy = p.spawnY, sz = p.spawnZ;
+    float dsx = 0, dsy = 0, dsz = 0;
+    if (SLP::GetDreamPlayerSpawn(g_dreamActor, dsx, dsy, dsz)) {
+        sx = dsx; sy = dsy; sz = dsz;  // prefer the live component location
+    }
+    SLP::TeleportPlayerTo(sx, sy, sz);
+
+    // Set the visual state
+    SLP::SetDreaming(true);
+    SLP::SetIsDream(true);
+    SLP::SetDreamBlur(true);
+
+    g_inDream = true;
+    UE_LOGI("sleep_sync: CLIENT entered dream '%ls' at (%.0f, %.0f, %.0f)",
+            className, sx, sy, sz);
+}
+
+void OnDreamEnd(const coop::net::DreamEndPayload& /*p*/, uint8_t senderSlot) {
+    auto* s = g_session.load(std::memory_order_acquire);
+    if (!s) return;
+    if (IsHost(s)) return;  // host doesn't mirror its own dream
+    if (senderSlot != 0) return;  // host-only
+
+    if (!g_inDream) return;  // not in a dream -- spurious / already exited
+
+    // Teleport back to our saved pre-dream position
+    SLP::TeleportPlayerTo(g_preDreamX, g_preDreamY, g_preDreamZ);
+
+    // Destroy the dream actor
+    if (g_dreamActor) {
+        SLP::DestroyDreamActor(g_dreamActor);
+        g_dreamActor = nullptr;
+    }
+
+    // Restore visual state
+    SLP::SetDreaming(false);
+    SLP::SetIsDream(false);
+    SLP::SetDreamBlur(false);
+
+    g_inDream = false;
+    UE_LOGI("sleep_sync: CLIENT left dream -- teleported back to (%.0f, %.0f, %.0f)",
+            g_preDreamX, g_preDreamY, g_preDreamZ);
 }
 
 void QueueConnectBroadcastForSlot(int peerSlot) {
@@ -318,6 +470,14 @@ void OnDisconnect() {
     g_gmInst = nullptr;
     for (bool& b : g_inBed) b = false;
     g_lastCount = g_lastTotal = 0;
+    // Dream sync cleanup: tear down any in-progress dream mirror
+    g_lastDreaming = false;
+    g_inDream = false;
+    if (g_dreamActor) {
+        SLP::DestroyDreamActor(g_dreamActor);
+        g_dreamActor = nullptr;
+    }
+    g_preDreamX = g_preDreamY = g_preDreamZ = 0;
 }
 
 }  // namespace coop::sleep_sync

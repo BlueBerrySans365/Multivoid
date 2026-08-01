@@ -52,12 +52,18 @@ void Install(coop::net::Session* session);
 
 // Per-tick: resolve (throttled), poll the local isSleep edge -> report,
 // enforce the WAITING dilation undo, clamp the client need during the
-// phase, manage the dreamProbability policy. Cheap when idle (a couple of
-// cached field reads).
+// phase, manage the dreamProbability policy, detect dreaming edges for
+// dream sync. Cheap when idle (a couple of cached field reads).
 void Tick();
 
 // Wire ingest (both roles; see SleepStatePayload op semantics).
 void OnReliable(const coop::net::SleepStatePayload& p, uint8_t senderSlot);
+
+// Wire ingest: dream spawn announcement (host->all).
+void OnDreamSpawn(const coop::net::DreamSpawnPayload& p, uint8_t senderSlot);
+
+// Wire ingest: dream end announcement (host->all).
+void OnDreamEnd(const coop::net::DreamEndPayload& p, uint8_t senderSlot);
 
 // HOST: a joiner arrived (world-ready) -- ends a running accelerate phase
 // (someone is now awake in the world) and re-tallies.

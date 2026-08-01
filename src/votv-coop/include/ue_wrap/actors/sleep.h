@@ -73,4 +73,35 @@ void* FindBed();
 // native entry incl. its validation gates (event/hunger/ragdoll aborts).
 bool CallSleep(void* bed);
 
+// ---- dream sync (v137, coop/sleep_sync) ----
+// mainGamemode.dreaming -- the in-nightmare flag (false if unresolved).
+bool IsDreaming();
+bool SetDreaming(bool v);
+
+// mainGamemode.playerPreDream -- the FTransform saved before entering the dream.
+// Read/Write the full 48-byte transform (loc + quat + scale).
+bool GetPlayerPreDream(float& x, float& y, float& z, float& qx, float& qy, float& qz, float& qw);
+bool SetPlayerPreDream(float x, float y, float z, float qx, float qy, float qz, float qw);
+
+// daynightCycle.isDream(bool) -- hides ExponentialHeightFog/SkyLight/light_sun.
+bool SetIsDream(bool v);
+
+// mainPlayer.teleportWObackrooms(loc) -- teleport the player to a location.
+bool TeleportPlayerTo(float x, float y, float z);
+
+// playerInterface.dreamBlur -- the blur overlay visibility.
+bool SetDreamBlur(bool visible);
+
+// Spawn a dream actor (AdreamBase_C subclass) via GameplayStatics. Returns the
+// spawned actor, or nullptr on failure. The caller must call DestroyDreamActor
+// when done.
+void* SpawnDreamActor(const wchar_t* className);
+
+// Get the playerSpawn component world location from a dream actor.
+// Returns false if the dream or its playerSpawn is null.
+bool GetDreamPlayerSpawn(void* dream, float& x, float& y, float& z);
+
+// Destroy a dream actor (K2_DestroyActor). No-op-safe on null.
+void DestroyDreamActor(void* dream);
+
 }  // namespace ue_wrap::sleep

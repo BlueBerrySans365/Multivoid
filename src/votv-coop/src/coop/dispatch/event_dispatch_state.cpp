@@ -410,6 +410,41 @@ bool HandleStateEvent(net::Session& session,
         coop::sleep_sync::OnReliable(sp, sslot);
         break;
     }
+    case net::ReliableKind::DreamSpawn: {
+        // v137: HOST->ALL dream spawn announcement. The host's nightmare roll
+        // succeeded; clients spawn a mirror copy of the dream class.
+        if (msg.senderPeerSlot != 0) {
+            UE_LOGW("event_feed: DreamSpawn from non-host senderPeerSlot=%d -- dropping",
+                    msg.senderPeerSlot);
+            break;
+        }
+        if (msg.payloadLen < sizeof(net::DreamSpawnPayload)) {
+            UE_LOGW("event_feed: DreamSpawn payload too short (%zu < %zu)",
+                    static_cast<size_t>(msg.payloadLen), sizeof(net::DreamSpawnPayload));
+            break;
+        }
+        net::DreamSpawnPayload dsp{};
+        std::memcpy(&dsp, msg.payload, sizeof(dsp));
+        coop::sleep_sync::OnDreamSpawn(dsp, 0);
+        break;
+    }
+    case net::ReliableKind::DreamEnd: {
+        // v137: HOST->ALL dream end announcement. The host's dream ended;
+        // clients exit their dream mirrors.
+        if (msg.senderPeerSlot != 0) {
+            UE_LOGW("event_feed: DreamEnd from non-host senderPeerSlot=%d -- dropping",
+                    msg.senderPeerSlot);
+            break;
+        }
+        if (msg.payloadLen < sizeof(net::DreamEndPayload)) {
+            UE_LOGW("event_feed: DreamEnd payload too short (%zu < %zu)",
+                    static_cast<size_t>(msg.payloadLen), sizeof(net::DreamEndPayload));
+            break;
+        }
+        net::DreamEndPayload dep{};
+        coop::sleep_sync::OnDreamEnd(dep, 0);
+        break;
+    }
     case net::ReliableKind::EmailAppend: {
         // HOST-AUTHORED since e5718fc6 (email_sync gates the append send on
         // role()==Host; clients author zero). Assembly + echo-proof shadow
