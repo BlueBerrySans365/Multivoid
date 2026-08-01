@@ -72,6 +72,7 @@
 #include "coop/interactables/interactable_sync.h"
 #include "coop/interactables/atv_sync.h"
 #include "coop/interactables/drone_sync.h"
+#include "coop/interactables/drone_call_sync.h"
 #include "coop/items/order_sync.h"
 #include "coop/world/event_cue_sync.h"
 #include "coop/world/event_fire_sync.h"
@@ -83,7 +84,9 @@
 #include "coop/interactables/power_sync.h"
 #include "coop/world/sky_sync.h"
 #include "coop/world/time_sync.h"
+#include "coop/world/seed_sync.h"
 #include "coop/interactables/window_sync.h"
+#include "coop/interactables/dwindow_sync.h"   // Ad_window_C panoramic RT: client-side dirty() suppression
 #include "coop/session/join_progress.h"
 #include "coop/interactables/garbage_sync.h"
 #include "coop/props/trash_channel.h"
@@ -138,9 +141,11 @@ void Install(coop::net::Session& session) {
     coop::keypad_sync::Install(&session);    // v33 password-keypad mirror (its own module)
     coop::time_sync::Install(&session);      // v36 host-authoritative world clock (time-of-day / dark-world fix)
     coop::sky_sync::Install(&session);       // v44 host-authoritative night-sky orientation + moon phase
+    coop::seed_sync::Install(&session);      // T2-7 seed replication for deterministic game systems
     coop::power_sync::Install(&session);     // v46 base power-panel breakers (its own module -- 5 bools)
     coop::atv_sync::Install(&session);       // v47 ATV body pose (occupant-authoritative keyed stream)
     coop::drone_sync::Install(&session);     // v48 delivery drone body pose (host-authoritative singleton)
+    coop::drone_call_sync::Install(&session); // T2-8 drone console call (client->host request)
     coop::order_sync::Install(&session);     // v49 delivery-drone economy: client->host shop-order forward
     coop::firefly_sync::Install(&session);   // v51 peer-symmetric ambient firefly mirror (each peer captures+shares its own)
     coop::event_cue_sync::Install(&session); // v79 HOST-AUTH cosmetic emitter-cue mirror (B1: starfall etc. -- host detects PSC, client replays)
@@ -181,6 +186,7 @@ void Install(coop::net::Session& session) {
     coop::comp_sync::Install(&session);      // v65: refiner decode pane (single-simulator stream + passive mirrors)
     coop::voice_chat::Install(&session);     // v66: proximity voice chat (opus over the session; PTT X)
     coop::window_sync::Install(&session);    // v41 base-window dirt scalar (the "main huge window")
+    coop::dwindow_sync::Install(&session);   // Ad_window_C panoramic RT: client-side dirty() suppression (opaque-dirt bug)
     coop::grime_sync::Install(&session);     // v42 surface grime (walls/ceiling/floor dirt decals)
     coop::trash_pile_sync::Install(&session);  // v57 trashBitsPile collect counters (uses 6/7)
     coop::trash_collect_sync::Install(&session);  // chipPile grab observer (InpActEvt_use PRE -> PropDestroy(eid); replaces the retired pile death-watch)
@@ -284,6 +290,7 @@ void ConnectReplayForSlot(int slot) {
     coop::laptop_buffer_sync::QueueConnectBroadcastForSlot(slot); // v121: the canonical quad (in-lane after the op=3 + slot content)
     coop::floppybox_sync::QueueConnectBroadcastForSlot(slot);     // v121: one canonical per live box
     coop::props::container_contents_sync::QueueConnectBroadcastForSlot(slot);  // v124: one slice per live world container (principle 8 anchor over the join snapshot)
+    coop::seed_sync::QueueConnectBroadcastForSlot(slot);  // T2-7: FRandomStream seeds for deterministic systems
     coop::dish_sync::QueueConnectBroadcastForSlot(slot);          // v113 (L4): dish snapshot + (if armed) the DishArm row -- AFTER the desk rows + the kind=0 catch row (same ordered lane)
     coop::sleep_sync::QueueConnectBroadcastForSlot(slot);         // v71 a joiner arrives awake -- end a running accelerate + re-tally
     coop::comp_sync::QueueConnectBroadcastForSlot(slot);          // v65 decode-pane adopt (CompState + CompData)
@@ -414,9 +421,11 @@ DisconnectStats DisconnectAll() {
     coop::keypad_sync::OnDisconnect();
     coop::time_sync::OnDisconnect();
     coop::sky_sync::OnDisconnect();
+    coop::seed_sync::OnDisconnect();
     coop::power_sync::OnDisconnect();
     coop::atv_sync::OnDisconnect();
     coop::drone_sync::OnDisconnect();
+    coop::drone_call_sync::OnDisconnect();
     coop::order_sync::OnDisconnect();
     coop::firefly_sync::OnDisconnect();
     coop::event_cue_sync::OnDisconnect();    // v79 clear the cosmetic-cue poll snapshot
@@ -460,6 +469,7 @@ DisconnectStats DisconnectAll() {
     coop::comp_sync::OnDisconnect();
     coop::voice_chat::OnDisconnect();
     coop::window_sync::OnDisconnect();
+    coop::dwindow_sync::OnDisconnect();  // Ad_window_C panoramic RT: stateless (no-op)
     coop::grime_sync::OnDisconnect();
     coop::trash_pile_sync::OnDisconnect();
     coop::trash_collect_sync::OnDisconnect();
@@ -487,6 +497,7 @@ void TickGameplay(coop::net::Session& session, bool isConnected, bool isHost,
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:keypad"}; coop::keypad_sync::Tick(); }        // v33 keypad poll + deferred-apply retry
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:time"}; coop::time_sync::Tick(); }          // v36/v109 world clock: HOST publishes the clock (net thread streams unreliable ClockPose); CLIENT drains + applies (design F)
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:sky"}; coop::sky_sync::Tick(); }           // v44 night-sky: host throttled push (host-only, no-op on client)
+    { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:seed"}; coop::seed_sync::Tick(); }         // T2-7 seed replication: host polls + broadcasts deterministic seeds
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:power"}; coop::power_sync::Tick(); }          // v46 base power panel: poll breaker edges + deferred-apply retry (symmetric)
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:atv"}; coop::atv_sync::Tick(); }            // v47 ATV: occupant streams its pose / mirror drives the interp (host+client)
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:drone"}; coop::drone_sync::Tick(); }          // v48 delivery drone: host streams transform / client suppresses tick + mirrors
@@ -529,6 +540,7 @@ void TickGameplay(coop::net::Session& session, bool isConnected, bool isHost,
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:voice"}; coop::voice_chat::Tick(); }          // v66: voice frame pump (mic drain -> send; inbox -> jitter; positions; state edges)
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:order"}; coop::order_sync::Tick(); }           // v49 drone economy: client polls+forwards orders / host commits assembled orders
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:window"}; coop::window_sync::Tick(); }         // v41 base-window clean: poll for wipes + deferred-apply retry (symmetric)
+    { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:dwindow"}; coop::dwindow_sync::Tick(); }       // Ad_window_C panoramic RT: client-side dirty() suppression
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:grime"}; coop::grime_sync::Tick(); }          // v42 surface grime: poll wipes + death-watch destroy + deferred-apply retry
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:npc_host"}; coop::npc_sync::TickPoseStream(); }    // v37 HOST: read NPCs -> publish EntityPose batch (host-only, no-op on client)
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:npc_client"}; coop::npc_mirror::TickClientNpcs(); }  // v37 CLIENT: apply batch + drive mirror interp (client-only, no-op on host)

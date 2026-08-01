@@ -18,6 +18,7 @@
 #include "coop/world/firefly_sync.h"
 #include "coop/items/inventory_pickup_sync.h"
 #include "coop/world/sky_sync.h"
+#include "coop/world/seed_sync.h"
 #include "coop/world/time_sync.h"
 #include "coop/world/weather_lightning.h"
 #include "coop/world/weather_redsky.h"
@@ -471,6 +472,23 @@ bool HandleWorldEvent(net::Session& session,
         ue_wrap::game_thread::Post([pCopy] {
             ::coop::weather_sync::ApplyFromHost(pCopy);
         });
+        break;
+    }
+    case net::ReliableKind::SeedSync: {
+        // T2-7: host replicates FRandomStream seeds for garbagePileSpawner + xmaslight.
+        // Variable-length payload: multiple [u8 type][u32 index][u32 seed] entries.
+        // Host->client only; client never sends seeds.
+        if (session.role() == net::Role::Host) {
+            UE_LOGI("event_feed: SeedSync received on host -- dropping");
+            break;
+        }
+        if (msg.senderPeerSlot != 0) {
+            UE_LOGW("event_feed: SeedSync from non-host slot %d -- dropping",
+                    msg.senderPeerSlot);
+            break;
+        }
+        coop::seed_sync::OnSeedChunk(msg.payload, msg.payloadLen,
+                                     static_cast<uint8_t>(msg.senderPeerSlot));
         break;
     }
     default:

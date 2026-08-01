@@ -151,7 +151,12 @@ void OnDisconnectForSlot(int peerSlot);
 // next frame and PhysX dereferences a freed body instance. The release
 // path is gated on `mainPlayer.grabbing_actor == actor` so it no-ops
 // for the common case where the destroyed prop isn't grabbed.
-void OnDestroy(const coop::net::PropDestroyPayload& payload, void* localPlayer);
+//
+// 2026-08-01: `senderSlot` added for A3 Half 2 authorization. On the HOST,
+// only the current holder of an entity (per holder_table) may destroy it.
+// Pass -1 when senderSlot is unknown (host-originated destroys).
+void OnDestroy(const coop::net::PropDestroyPayload& payload, void* localPlayer,
+               int senderSlot = -1);
 
 // Deferred re-apply of a PropDestroy that arrived BEFORE its target loaded (the destroy-before-load race).
 // Called ONLY by the drain-edge order owner (quiescence_drain::ApplyPendingDestroys) at the quiescence sweep,

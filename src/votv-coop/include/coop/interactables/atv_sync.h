@@ -1,4 +1,8 @@
-// coop/atv_sync.h -- ATV/quadbike (AATV_C) Phase 1 body POSE sync (protocol v47).
+// coop/atv_sync.h -- ATV/quadbike (AATV_C) Phase 1+2 body POSE + state sync.
+//
+// Phase 1 = body pose + occupant/brake stateBits. Phase 2 (v136) adds fuel, health, engineOn,
+// broken fields in the same AtvStatePayload (grown 60->68B) + a ONE-SHOT AtvExplode VFX edge.
+// The authority streams everything; mirrors poke live fields + call updHealth() for smoke VFX.
 //
 // Gameplay/network layer (principle 7): owns the wire protocol, the occupant-authority gating,
 // the per-tick stream/poll, the receiver kinematic apply with a LerpWindow interp, the key->actor
@@ -34,6 +38,7 @@ struct AtvStatePayload;
 struct AtvReleasePayload;
 struct AtvSpawnPayload;
 struct AtvDestroyPayload;
+struct AtvExplodePayload;
 }  // namespace coop::net
 
 namespace coop::atv_sync {
@@ -64,6 +69,11 @@ void OnAtvSpawn(const coop::net::AtvSpawnPayload& payload, uint8_t senderPeerSlo
 // Receiver entry (CLIENT-only): an AtvDestroy arrived (v77). The host's synthetic-keyed (purchased)
 // ATV is gone -> K2_DestroyActor the fresh-spawned mirror + drop the index entry. From event_feed.
 void OnAtvDestroy(const coop::net::AtvDestroyPayload& payload, uint8_t senderPeerSlot);
+
+// Receiver entry: an AtvExplode arrived (Phase 2, v136). The authority crossed health<=0 and sent
+// this ONE-SHOT VFX trigger. Mirrors spawn explosion_C VFX-only at the given location (NOT calling
+// explode() which re-impulses + ejects). From event_feed.
+void OnAtvExplode(const coop::net::AtvExplodePayload& payload, uint8_t senderPeerSlot);
 
 // HOST-only: snapshot the current pose of every indexed ATV to a freshly connected client
 // `peerSlot` (adopt=1 -> the joiner snaps to it). Net-pump connect edge. Game thread.

@@ -22,6 +22,7 @@
 #include "coop/props/join_membership_sweep.h" // HasLoadTailQuiesced (steady-state vs load-tail gate for the defer)
 #include "coop/creatures/kerfur_entity.h"     // ForgetKerfurPropMirror (mirror-teardown choke-point)
 #include "coop/player/players_registry.h"     // players::Registry::Get().Local() (TryApplyDestroy)
+#include "coop/props/holder_table.h"          // A3 Half 2: IsHeldBy (sender authority)
 #include "coop/props/prop_echo_suppress.h"    // MarkIncomingDestroy
 #include "coop/props/prop_element_tracker.h"  // ResolveLiveActorByKey
 #include "coop/props/trash_channel.h"         // ClearClientCarry (destroyed carried proxy)
@@ -109,7 +110,11 @@ void DestroyResolvedLocalActor_(void* actor, const std::wstring& keyW,
 // destroy arrived 9s before the client loaded its Nrby off-prop -> "no local actor" -> the prop then loaded
 // unopposed -> a dup). `allowDefer`=false is the deferred re-apply (TryApplyDestroy): a still-missing actor
 // just returns false to stay queued. Returns true iff a local actor was destroyed (or a proxy retired). GT.
-bool OnDestroyImpl_(const coop::net::PropDestroyPayload& payload, void* localPlayer, bool allowDefer) {
+//
+// `senderSlot`: the peer slot that sent the destroy. On the HOST, only the current holder of an entity
+// (per holder_table) may destroy it. -1 means unknown (host-originated or legacy caller).
+bool OnDestroyImpl_(const coop::net::PropDestroyPayload& payload, void* localPlayer,
+                    bool allowDefer, int senderSlot) {
     // Clears g_drives[*] if the destroyed actor was under drive (T-10, GT-only).
     // Dispatched from event_feed::Update on the game thread (PropDestroy case).
     UE_ASSERT_GAME_THREAD("g_drives (remote_prop::OnDestroy)");
@@ -122,6 +127,7 @@ bool OnDestroyImpl_(const coop::net::PropDestroyPayload& payload, void* localPla
         // carry -- audit HIGH), else the next E-press throws a dead eid forever. RetireProxy clears the drive.
         coop::trash_channel::ClearClientCarry(payload.elementId);
         coop::trash_proxy::RetireProxy(payload.elementId);
+        coop::holder_table::ClearHeldBy(static_cast<coop::element::ElementId>(payload.elementId));
         return true;
     }
     const std::wstring keyW = KeyToWString(payload.key);
@@ -149,6 +155,25 @@ bool OnDestroyImpl_(const coop::net::PropDestroyPayload& payload, void* localPla
     // and the actor is already gone). Done AFTER the eid resolution above so that lookup
     // could still see it. Silent no-op for unknown eids (legacy elementId==0 senders).
     UnregisterPropMirror(payload.elementId);
+
+    // A3 Half 2 (2026-08-01): HOST-SIDE AUTHORITY CHECK. On the host, only the current
+    // holder of an entity (per holder_table) may destroy it. This prevents a malicious
+    // client from destroying any prop by wire-Key. The check runs AFTER UnregisterPropMirror
+    // so the mirror is cleaned up even on rejection (a forged destroy still drains the
+    // mirror -- the sender's own mirror, not the host's). Pass through when senderSlot<0
+    // (host-originated or legacy caller -- no authority gate needed).
+    if (senderSlot >= 0) {
+        // Trash proxies are NOT in the holder table (they use a separate lifecycle).
+        // Only check keyed/mirrored props.
+        if (payload.elementId != 0 && payload.elementId != coop::element::kInvalidId &&
+            !coop::trash_proxy::IsProxy(payload.elementId)) {
+            if (!coop::holder_table::IsHeldBy(payload.elementId, static_cast<uint8_t>(senderSlot))) {
+                UE_LOGW("remote_prop::OnDestroy: DENIED eid=%u slot=%u -- sender does not hold this entity "
+                        "(key '%ls')", payload.elementId, senderSlot, keyW.c_str());
+                return false;
+            }
+        }
+    }
     if (!actor) {
         if (keyW.empty() &&
             (payload.elementId == 0 || payload.elementId == coop::element::kInvalidId)) {
@@ -182,16 +207,18 @@ bool OnDestroyImpl_(const coop::net::PropDestroyPayload& payload, void* localPla
         return false;
     }
     DestroyResolvedLocalActor_(actor, keyW, payload, localPlayer);
+    coop::holder_table::ClearHeldBy(static_cast<coop::element::ElementId>(payload.elementId));
     return true;
 }
 
 }  // namespace
 
-void OnDestroy(const coop::net::PropDestroyPayload& payload, void* localPlayer) {
+void OnDestroy(const coop::net::PropDestroyPayload& payload, void* localPlayer,
+               int senderSlot) {
     // (The take-4 wire-order netting call that lived here is RETIRED by the 2026-07-12 join
     // barrier: no spawn is ever captured in-episode anymore, so there is nothing to cancel --
     // wire events apply strictly in arrival order on a settled world.)
-    OnDestroyImpl_(payload, localPlayer, /*allowDefer=*/true);
+    OnDestroyImpl_(payload, localPlayer, /*allowDefer=*/true, senderSlot);
 }
 
 // Deferred re-apply, called by the drain-edge order owner (quiescence_drain::ApplyPendingDestroys) at the
@@ -200,7 +227,8 @@ void OnDestroy(const coop::net::PropDestroyPayload& payload, void* localPlayer) 
 // keeps it queued for the next drain. NEVER re-arms (allowDefer=false) -- the order owner already owns it.
 bool TryApplyDestroy(const coop::net::PropDestroyPayload& payload) {
     void* localPlayer = coop::players::Registry::Get().Local();
-    return OnDestroyImpl_(payload, localPlayer, /*allowDefer=*/false);
+    // senderSlot=-1: deferred re-apply has no sender context (already validated at arrival).
+    return OnDestroyImpl_(payload, localPlayer, /*allowDefer=*/false, /*senderSlot=*/-1);
 }
 
 void ConsumeLocalActor(void* actor) {

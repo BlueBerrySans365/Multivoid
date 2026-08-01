@@ -606,6 +606,15 @@ void ApplyToPuppet(void* puppetActor, const coop::net::ItemActivatePayload& payl
             payload.outerConeAngle, payload.innerConeAngle, payload.mode,
             static_cast<unsigned>(senderPeerSlot), payload.senderElementId);
 
+    // Phase 5F proxy keep-alive: cache the light state on the RemotePlayer so
+    // Tick() can periodically re-apply it (prevents UE4 from destroying the
+    // light proxy at distance). Must run AFTER the initial apply so the cached
+    // state matches what was just written to the puppet.
+    if (auto* rp = coop::players::Registry::Get().Puppet(senderPeerSlot)) {
+        rp->SetCachedLightState(newState, targetIntensity,
+                                payload.outerConeAngle, payload.innerConeAngle);
+    }
+
     // 3D positional click sound at the puppet -- extracted to its own
     // subsystem (see coop/flashlight_click_sound.h). Gated on state-CHANGE
     // (hold-F mode-change packets don't click). Runtime-constructs its

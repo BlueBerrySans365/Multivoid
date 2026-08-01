@@ -38,6 +38,15 @@
 #include "ue_wrap/core/log.h"
 #include "ue_wrap/actors/prop.h"                  // IsChipPile
 #include "ue_wrap/core/reflection.h"
+#include "ue_wrap/devices/door.h"                 // IsDoor
+#include "ue_wrap/devices/lightswitch.h"          // IsLightSwitch
+#include "ue_wrap/devices/appliance.h"            // IsAppliance
+#include "ue_wrap/devices/atv.h"                  // IsAtv
+#include "ue_wrap/devices/base_window.h"          // IsBaseWindow
+#include "ue_wrap/devices/garage.h"               // IsGarage
+#include "ue_wrap/devices/grime.h"                // IsGrime
+#include "ue_wrap/devices/power_control.h"        // IsPowerControl
+#include "ue_wrap/devices/windturbine.h"          // IsTurbine
 #include "ue_wrap/core/sdk_profile.h"           // MainPlayer class + use/fire input-event fn names
 #include "ue_wrap/core/types.h"
 #include "ue_wrap/core/ufunction_hook.h"
@@ -119,8 +128,8 @@ static bool OnPileUseDenySuppress(void* self, void* /*params*/) {
             const float yaw = camRot.Yaw * d2r, pitch = camRot.Pitch * d2r;
             const float cp = std::cos(pitch);
             const ue_wrap::FVector camFwd{ cp * std::cos(yaw), cp * std::sin(yaw), std::sin(pitch) };
-            cancel = coop::trash_proxy::EidForAimedPileProxy(camLoc, camFwd, /*maxRangeCm=*/400.f,
-                                                             /*minDot=*/0.94f) != coop::element::kInvalidId;
+            cancel = coop::trash_proxy::EidForAimedPileProxy(camLoc, camFwd, /*maxRangeCm=*/280.f,
+                                                             /*minDot=*/0.97f) != coop::element::kInvalidId;
         }
     }
     if (cancel) g_cancelPairedUseRelease = true;
@@ -242,9 +251,39 @@ static bool OnPileUseIntercept(void* self, void* /*params*/) {
                 return true;
             }
         }
+        // PRIORITY GUARD: if the player is looking at a native interactable (door, lightswitch,
+        // device, ATV, window, etc.), do NOT intercept with a trash cone match. The camera-ray
+        // cone below is a FALLBACK for proxy piles that the engine trace cannot hit (no collision
+        // body). But if lookAtActor already resolved to a real interactable, that takes priority --
+        // letting the trash cone override would cause E-press on a door to grab a nearby pile
+        // instead (the 2026-08-01 client interaction bug). readLookAtActor is the tick-cached
+        // interaction trace result; it is authoritative for what the game considers "aimed at".
+        {
+            void* aimedOther = ue_wrap::engine::ReadMainPlayerLookAtActor(self);
+            if (aimedOther && !ue_wrap::prop::IsChipPile(aimedOther)) {
+                // lookAtActor is a non-pile interactable. Check if it's a device/door/class
+                // that has its own coop handler (door, lightswitch, appliance, device, etc.).
+                // If so, yield to let the native dispatch + the device/door handler run.
+                const bool isKnownInteractable =
+                    ue_wrap::door::IsDoor(aimedOther) ||
+                    ue_wrap::lightswitch::IsLightSwitch(aimedOther) ||
+                    ue_wrap::appliance::IsAppliance(aimedOther) ||
+                    ue_wrap::atv::IsAtv(aimedOther) ||
+                    ue_wrap::base_window::IsBaseWindow(aimedOther) ||
+                    ue_wrap::garage::IsGarage(aimedOther) ||
+                    ue_wrap::grime::IsGrime(aimedOther) ||
+                    ue_wrap::power_control::IsPowerControl(aimedOther) ||
+                    ue_wrap::turbine::IsTurbine(aimedOther) ||
+                    ue_wrap::prop::IsKeyedInteractable(aimedOther);
+                if (isKnownInteractable) {
+                    return false;  // let the native use dispatch run (door/device/lightswitch handler will pick it up)
+                }
+            }
+        }
         // Aim ray from the live view camera (FALLBACK -- unbound proxy piles only). Forward from the camera
-        // rotation (deg->rad): the unit vector the cone tests each pile proxy against. maxRange 400 cm (a
-        // generous reach), minDot 0.94 (~20 deg cone -- forgiving so a slightly-off aim still grabs).
+        // rotation (deg->rad): the unit vector the cone tests each pile proxy against. Tightened: maxRange
+        // 280 cm (was 400 -- reduced to prevent cone-matching piles the player is near but NOT looking at),
+        // minDot 0.97 (~14 deg cone -- was 0.94/20 deg, tightened to reduce false-positive grabs).
         const ue_wrap::FVector  camLoc = ue_wrap::engine::GetCameraLocation();
         const ue_wrap::FRotator camRot = ue_wrap::engine::GetCameraRotation();
         const float d2r = 3.14159265f / 180.f;
@@ -252,7 +291,7 @@ static bool OnPileUseIntercept(void* self, void* /*params*/) {
         const float cp = std::cos(pitch);
         const ue_wrap::FVector camFwd{ cp * std::cos(yaw), cp * std::sin(yaw), std::sin(pitch) };
         const coop::element::ElementId eid =
-            coop::trash_proxy::EidForAimedPileProxy(camLoc, camFwd, /*maxRangeCm=*/400.f, /*minDot=*/0.94f);
+            coop::trash_proxy::EidForAimedPileProxy(camLoc, camFwd, /*maxRangeCm=*/280.f, /*minDot=*/0.97f);
         if (eid == coop::element::kInvalidId)
             return false;  // not aiming at a mirrored pile -> let the native use run (devices, other interactions)
         // Pickup cue at the aimed proxy pile (same as the bound-native branch -- the native use is CANCELLED

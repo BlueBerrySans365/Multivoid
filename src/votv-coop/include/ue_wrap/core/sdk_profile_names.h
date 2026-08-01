@@ -244,6 +244,12 @@ inline constexpr const wchar_t* kAmbientPropSpawnMirrorClasses[] = {
     L"paranormalSpot_C",      // furfurAltarSpawner product (paranormal spot in dirthole)
     L"fallingBody_C",         // ufoDropper product (falling body drop)
     L"lampPost_C",            // ufoDropper product (lamp post drop)
+    // Group B/C (2026-08-01): tick-driven spawner products.
+    // Host rolls random-delay timer + spawns via BeginDeferred; client mirrors.
+    L"hexahive_C",            // ticker_hexahiveSpawner product (hexahive prop)
+    L"bp7_C",                 // ticker_bp7Spawner product (bp7 prop)
+    L"deer_C",                // ticker_deerSpawner product (deer prop)
+    L"mannequin_C",           // ticker_mannequinSpawner product (mannequin prop)
 };
 inline constexpr size_t kAmbientPropSpawnMirrorClassesSize =
     sizeof(kAmbientPropSpawnMirrorClasses) / sizeof(kAmbientPropSpawnMirrorClasses[0]);

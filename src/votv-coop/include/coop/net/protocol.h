@@ -705,7 +705,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // + replays them in ConnectReplayForSlot. mainPlayer.holding_actor with an Aprop_C no
 // longer feeds the PropSpawn/PropPose path (the trash clump/pile carry -- the
 // non-Aprop_C holding_actor case -- stays on its lane untouched).
-inline constexpr uint16_t kProtocolVersion = 134; // v134 (2026-07-31, consume b133: chat HISTORY + the roster ledger/player list + host-assigned unique nicknames persisted to ini + real UTF-8 across every text surface (imgui 1.92.9 lazy atlas, +4,741 codepoints and the combining marks) + the CURSOR fix (ScaleAllSizes truncated MouseCursorScale to 0) + GitHub issue #5 (the overlay stops taking keys the GAME is typing: the predicate is now the game's own IsValid(activeInterface) guard, and the focus backstop asks about USER 0 so WidgetInteraction's virtual user cannot latch it) + the chat send-flicker and nameplate centring/host-ping fixes. No wire-format change in the b133 range; the bump is the release rule + the Paper-pair build number). Prior: v133 (2026-07-29, CHAT HISTORY -- +ChatLine=119 +ChatSpeaker=120, and ChatMessage=48 becomes client->host ONLY (out of IsClientRelayableReliableKind, RULE 2). Chat inverts from host-RELAYED to host-AUTHORED: the lobby now has a chat RECORD with a host-assigned lineSeq that IS the total order every peer sorts by, and a joiner is SEEDED from it. The relay could not carry this -- it fires on the NET thread at receive time, before the game thread where a lineSeq could be assigned even exists, so at relay time the order does not yet exist. A parse change AND a release, so the Paper-pair build number moves with it). Prior: v132 (2026-07-28, ARC B -- the HOST is the canonical namer: a Join's nick is ARBITRATED before it enters the ledger, and the assignment reaches the named peer on its own RosterRow (whose nick already sat in the FIXED PREFIX above the applyDeclared gate for exactly this). The row FORMAT is unchanged -- what changed is who authors the value and that the named peer KEEPS it: per the user's 2026-07-28 decision the assigned name is written back to multivoid.ini, so the next session asks to be called Pelmentor2 and keeps it unless someone else already is. The bump is the release rule + the Paper-pair build number, not a parse change). Prior: v131 (2026-07-28: RosterRow FIXED PREFIX widened -- +[u8 linkKind][i16 pingMs] after eid, so the HOST publishes how every player is connected to the SESSION and every board renders the same value for the same player. Retires the per-viewer derivation that answered transport on some rows and ROUTE ("VIA HOST") on others, in one column, side by side; retires the client-side rttMsForSlot fan-out to nameplates, which could only ever measure the host link. The fields sit in the FIXED PREFIX because the tail's offset arithmetic lives inside the applyDeclared block, which is skipped for exactly the host row and the receiver's own row). Prior: v130 (2026-07-27, arc A: PlayerJoined WIDENED + renamed RosterRow -- +uint16 playerNo, admits slot 0 and the receiver's own slot, playerNo 0 = slot empty. The roster ledger is now the single presence authority; a client's TAB used to list only itself and the host). Prior: v129 (2026-07-26, consume b128: DX12 overlay renderer + Graphics API indicator + Tidy-up fix + the release notes/install pipeline); v128 (consume b127, the WHOLE ini workstream -- arc 3 const Row& ratchet + arc 4 T8 catalog); v127 (consume b126, arcs 1+2); v126 (consume b125, drill-matrix, retracted); v125 (2026-07-22, R11b container extraction):
+inline constexpr uint16_t kProtocolVersion = 136; // v136 (2026-08-01, ATV Phase 2: AtvStatePayload grows 60->68B (+fuel +health +engineOn +broken stateBits), AtvExplode=123 ONE-SHOT VFX trigger). Prior: v135 (2026-07-31, consume b133: chat HISTORY + the roster ledger/player list + host-assigned unique nicknames persisted to ini + real UTF-8 across every text surface (imgui 1.92.9 lazy atlas, +4,741 codepoints and the combining marks) + the CURSOR fix (ScaleAllSizes truncated MouseCursorScale to 0) + GitHub issue #5 (the overlay stops taking keys the GAME is typing: the predicate is now the game's own IsValid(activeInterface) guard, and the focus backstop asks about USER 0 so WidgetInteraction's virtual user cannot latch it) + the chat send-flicker and nameplate centring/host-ping fixes. No wire-format change in the b133 range; the bump is the release rule + the Paper-pair build number). Prior: v133 (2026-07-29, CHAT HISTORY -- +ChatLine=119 +ChatSpeaker=120, and ChatMessage=48 becomes client->host ONLY (out of IsClientRelayableReliableKind, RULE 2). Chat inverts from host-RELAYED to host-AUTHORED: the lobby now has a chat RECORD with a host-assigned lineSeq that IS the total order every peer sorts by, and a joiner is SEEDED from it. The relay could not carry this -- it fires on the NET thread at receive time, before the game thread where a lineSeq could be assigned even exists, so at relay time the order does not yet exist. A parse change AND a release, so the Paper-pair build number moves with it). Prior: v132 (2026-07-28, ARC B -- the HOST is the canonical namer: a Join's nick is ARBITRATED before it enters the ledger, and the assignment reaches the named peer on its own RosterRow (whose nick already sat in the FIXED PREFIX above the applyDeclared gate for exactly this). The row FORMAT is unchanged -- what changed is who authors the value and that the named peer KEEPS it: per the user's 2026-07-28 decision the assigned name is written back to multivoid.ini, so the next session asks to be called Pelmentor2 and keeps it unless someone else already is. The bump is the release rule + the Paper-pair build number, not a parse change). Prior: v131 (2026-07-28: RosterRow FIXED PREFIX widened -- +[u8 linkKind][i16 pingMs] after eid, so the HOST publishes how every player is connected to the SESSION and every board renders the same value for the same player. Retires the per-viewer derivation that answered transport on some rows and ROUTE ("VIA HOST") on others, in one column, side by side; retires the client-side rttMsForSlot fan-out to nameplates, which could only ever measure the host link. The fields sit in the FIXED PREFIX because the tail's offset arithmetic lives inside the applyDeclared block, which is skipped for exactly the host row and the receiver's own row). Prior: v130 (2026-07-27, arc A: PlayerJoined WIDENED + renamed RosterRow -- +uint16 playerNo, admits slot 0 and the receiver's own slot, playerNo 0 = slot empty. The roster ledger is now the single presence authority; a client's TAB used to list only itself and the host). Prior: v129 (2026-07-26, consume b128: DX12 overlay renderer + Graphics API indicator + Tidy-up fix + the release notes/install pipeline); v128 (consume b127, the WHOLE ini workstream -- arc 3 const Row& ratchet + arc 4 T8 catalog); v127 (consume b126, arcs 1+2); v126 (consume b125, drill-matrix, retracted); v125 (2026-07-22, R11b container extraction):
                                                   // ContainerContents becomes BIDIRECTIONAL and its
                                                   // blob gains a baseHash. A client now AUTHORS the
                                                   // world container it mutated (presser-authored
@@ -1534,13 +1534,11 @@ enum class ReliableKind : uint8_t {
                        //     -- the laptop shop reads Points live, so no "ka-ching"/email
                        //     spam on a mirror sync). HOST->client only; not relayable.
                        //     Payload: BalancePayload (4 bytes).
-    BalanceDelta = 24, // 2026-06-04 (v30): CLIENT->host balance-change REQUEST. A
-                       //     client-side credit (the +1000 dev button; a future shop buy)
-                       //     can't write its own mirror -- the next BalanceSync overwrites
-                       //     it -- so it sends the signed delta to the host, which applies
-                       //     it via mainGamemode::AddPoints(amount); the host's poll then
-                       //     re-broadcasts the new total to all. CLIENT->host only; not
-                       //     relayable. Payload: BalancePayload.
+    BalanceDelta = 24, // RETIRED (2026-08-01, A5): was CLIENT->host balance-change REQUEST.
+                       //     The sole caller was the dev +1000 button (add_points.cpp), which
+                       //     is now host-only. The lane is retired per RULE 2 (no clamp).
+                       //     Dropping on receipt; dev button applies locally on host via
+                       //     AddPoints. Payload: BalancePayload (4 bytes, ignored).
     KeypadState = 25,  // 2026-06-06 (v35): password-keypad INPUT mirror (ApasswordLock_C). v38: + active (cancel->red).
                        //     v59: + event (the short-code submit mirror -- see KeypadEvent).
                        //     SYMMETRIC, MTA input-replication. The keypad verbs are BP-internal
@@ -1695,21 +1693,16 @@ enum class ReliableKind : uint8_t {
                        //     this mirrors the PANEL's own breaker/LED visual. Host relays a
                        //     client edge. ue_wrap/power_control. RE: votv-powerControl-panel-
                        //     sync-RE-2026-06-08.md.
-    AtvState = 37,     // 2026-06-08 (v47): ATV/quadbike (AATV_C) Phase 1 body POSE + state.
+    AtvState = 37,     // 2026-06-08 (v47, Phase 2 @v136): ATV/quadbike (AATV_C) body POSE + state.
                        //     OCCUPANT-authoritative keyed pose stream -- the peer whose LOCAL
-                       //     player is seated (the driver) reads its live ATV root transform +
-                       //     throttled-streams it (~20Hz) reliably; the host RELAYS a client
-                       //     driver's pose to the other clients (IsClientRelayableReliableKind).
-                       //     A receiver applies it KINEMATICALLY (physics+tick disabled on the
-                       //     mirror -- the clump/NPC discipline) with a LerpWindow interp, UNLESS
-                       //     it is itself the occupant of that ATV (then it ignores -- it is the
-                       //     authority). Unoccupied ATVs are not streamed (they hold last pose);
-                       //     the host connect-snapshots each ATV's current pose (adopt=1) to a
-                       //     joiner. Identity = the save-placed Key@0x0618 (cross-peer stable).
-                       //     Phase 2 = fuel/health/brake on-change + broken/explode edge; Phase
-                       //     1.5 = occupant->puppet seating (occupantSlot carried now). Payload:
-                       //     AtvStatePayload (60 B). coop/atv_sync + ue_wrap/atv. RE: votv-ATV-
-                       //     quadbike-RE + votv-ATV-Phase1-pose-stream-blueprint-2026-06-08.md.
+                       //     player is seated (the driver) OR grav-hand grabbing reads its live
+                       //     ATV root transform + throttled-streams it (~20Hz) reliably; the host
+                       //     RELAYS a client driver's pose to the other clients. A receiver
+                       //     applies it KINEMATICALLY (physics+tick disabled) with a LerpWindow
+                       //     interp, UNLESS it is itself the authority. Phase 2 adds fuel, health,
+                       //     engineOn, and broken fields -- mirrors poke live fields + call
+                       //     updHealth() for smoke VFX. Payload: AtvStatePayload (68 B).
+                       //     coop/atv_sync + ue_wrap/atv.
     DroneState = 38,   // 2026-06-08 (v48): delivery DRONE (Adrone_C) Phase 1 body pose mirror.
                        //     HOST-AUTHORITATIVE singleton -- the drone is host-simulated (its BP
                        //     ReceiveTick flight integrator); the host streams the resolved actor
@@ -2651,8 +2644,32 @@ enum class ReliableKind : uint8_t {
                        //     a joiner who never saw the earlier one. Chat is human-rate,
                        //     so ~90 B per message buys statelessness -- no per-recipient
                        //     set, no versioning, no delivery bookkeeping. speakerId is a
-                       //     PER-BURST index: no minting policy, no eviction policy,
-                       //     nothing to bound.
+                        //     PER-BURST index: no minting policy, no eviction policy,
+                        //     nothing to bound.
+    SeedSync = 121,     // v136 (seed_sync): host replicates FRandomStream seeds for
+                        //     deterministic game systems. Three systems use seeded
+                        //     RandomStreams: garbagePileSpawner (garbage layout+types),
+                        //     radiotower.generateGizmos (decor), xmaslight (pattern).
+                        //     Same seed -> same rolls -> no suppression needed (shape-3).
+                        //     Host reads seed values from live instances and sends to
+                        //     clients at connect + on change. Client applies seed to its
+                        //     local FRandomStream instances. Wire: [u8 type][u32 index]
+                        //     [u32 seed]. type 0 = garbagePileSpawner (singleton, index=0),
+                        //     type 1 = xmaslight (index = instance ordinal).
+    DroneCallRequest = 122, // v136 (drone_call_sync): client->host drone console call.
+                        //     When a client presses E on the droneConsole, the POST
+                        //     observer detects the console via lookAtActor class check
+                        //     and sends this packet. Host resolves the drone singleton
+                        //     + the console actor and calls triggerFly(console).
+                        //     Client's native player_use runs harmlessly (drone tick
+                        //     is suppressed). Payload: none (singleton identity).
+    AtvExplode = 123,   // v136 (atv_sync Phase 2): ONE-SHOT VFX trigger when the ATV's
+                        //     health crosses zero (authority-computed single crossing).
+                        //     The authority sends this ONCE after computing health<=0;
+                        //     mirrors spawn a VFX-only explosion_C at the given location
+                        //     (NOT calling explode() which re-impulses + ejects). Rides
+                        //     the same Normal lane as AtvState (in-order: health->0 then
+                        //     the explosion edge). Payload: AtvExplodePayload.
     // Slots 21/22 (HeldClumpGrab/Release) RETIRED 2026-06-03 (v26, RULE 2): the v25
     // hand-attach model for the trash clump was the wrong shape (VOTV carries the
     // clump via the physics grab, floating in front, like the mannequin -- not
@@ -3898,16 +3915,16 @@ struct AtvStatePayload {
     WireKey  key;          // 32 -- the ATV's Key@0x0618 (FName string)
     float    x, y, z;      // 12 -- root body world location (cm; the root Mesh == the actor)
     float    pitch, yaw, roll;  // 12 -- full rotation (the ATV tips/flips, unlike a biped)
+    float    fuel;         // 4  -- fuel@0x05D4 (0..100); gauge reads live (no BP call needed)
+    float    health;       // 4  -- health@0x05E4 (0..100); smoke driven by updHealth() call
     uint8_t  occupantSlot; // 1  -- the driver's peer slot (0xFF = unoccupied) [Phase 1.5 seating]
-    uint8_t  stateBits;    // 1  -- bit0=isDriven, bit1=brake, bit2=grabbed (grav-hand carried), bit3=authored
-                           //      (v77: SOME peer is actively driving/grabbing this ATV -- set on the
-                           //      connect-snapshot so a joiner freezes only authored ATVs; idle ones stay
-                           //      physics-on + grabbable. A live stream is always from an authority, so the
-                           //      bit is informational there.)
+    uint8_t  stateBits;    // 1  -- bit0=isDriven(seated), bit1=brake, bit2=grabbed (grav-hand
+                           //      carried), bit3=authored (some peer actively driving/grabbing),
+                           //      bit4=engineOn(isDrive@0x05D0), bit5=broken(brokenn@0x05E9)
     uint8_t  adopt;        // 1  -- 1 = host connect-snapshot (snap verbatim), 0 = live stream
     uint8_t  _pad;         // 1
 };
-static_assert(sizeof(AtvStatePayload) == 60, "AtvStatePayload must be 60 bytes");
+static_assert(sizeof(AtvStatePayload) == 68, "AtvStatePayload must be 68 bytes");
 
 // v77 (2026-06-15): purchased-ATV host announce (see ReliableKind::AtvSpawn). The host fresh-spawns
 // a bought ATV for the clients that lack a local twin (host-only economy). Carries the className so
@@ -3928,6 +3945,21 @@ struct AtvDestroyPayload {
     WireKey synthKey;  // 32
 };
 static_assert(sizeof(AtvDestroyPayload) == 32, "AtvDestroyPayload must be 32 bytes");
+
+// v136 (2026-08-01): ATV Phase 2 -- ONE-SHOT explosion VFX trigger (see ReliableKind::AtvExplode).
+// Sent ONCE by the authority that computes health crossing zero. Mirrors spawn explosion_C VFX-only
+// at the given location (NOT calling explode() which re-impulses + ejects the local driver).
+// Rides the same Normal lane as AtvState (in-order: health->0 arrives first, then this edge).
+// coop/atv_sync.
+struct AtvExplodePayload {
+    WireKey key;       // 32 -- the ATV's Key@0x0618
+    float   locX;      // 4  -- explosion spawn location (cm), typically the tp@0x0560 offset
+    float   locY;
+    float   locZ;
+};
+static_assert(sizeof(AtvExplodePayload) == 44, "AtvExplodePayload must be 44 bytes");
+static_assert(sizeof(AtvExplodePayload) <= 256 - 20 - 8,
+              "AtvExplodePayload must fit in one reliable datagram (kMaxReliablePayload)");
 
 // v76 (2026-06-15): ATV grab-carry RELEASE -- sent ONCE on the grab-release/throw edge by the peer
 // that was the grav-hand grabber (atv_sync). The receiver re-enables the mirror's physics

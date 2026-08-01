@@ -71,6 +71,11 @@ bool LocalHolds(const wchar_t* key);
 // is authoritative; on a client it is the broadcast mirror. Game thread.
 uint8_t HolderOf(const wchar_t* key);
 
+// A4 (2026-08-01): True iff `slot` is the current holder of `key`.
+// Non-forcing initially (log-only); will flip to enforcing after soak.
+// On the host this is authoritative; on a client it is the broadcast mirror.
+bool IsClaimedBy(const wchar_t* key, uint8_t slot);
+
 // HOST: send the current claim table to a joining peer (world-ready replay).
 void QueueConnectBroadcastForSlot(int peerSlot);
 

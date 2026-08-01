@@ -45,6 +45,10 @@ struct SaveRecord {
     std::vector<std::vector<std::array<float, 10>>> transforms; // FTransform packed
     std::vector<std::vector<uint8_t>>               bytes;
     std::vector<std::vector<std::wstring>>          names;    // FName
+    // Increment 2: nested container contents (shipped inline, not in GObjStack). Only populated
+    // on the SENDER side during ReadContents; the wire format encodes depth + sub-records, and
+    // the RECEIVER reconstructs this during ParseAndApply. NOT part of the Fstruct_save POD.
+    std::vector<SaveRecord>                         subRecords;
 };
 
 // ARRAY ELEMENT STRIDE = the 16-ALIGNED struct size, NOT the dump's raw `Size: 0xF8` line.

@@ -436,6 +436,33 @@ void RemotePlayer::Tick() {
         dirty_ = true;
     }
 
+    // Phase 5F flashlight proxy keep-alue: periodically re-apply the cached light
+    // state to prevent UE4 from destroying the light proxy at distance. When a puppet
+    // moves far from the host's camera, UE4 may cull the light scene proxy. Nothing
+    // in the normal path forces proxy recreation (MarkRenderStateDirty is only called
+    // on state transitions via ApplyToPuppet, not per-frame). This re-apply forces
+    // MarkRenderStateDirty -> RecreateRenderState_Concurrent -> CreateSceneProxy,
+    // keeping the flashlight visible at any distance.
+    if (lightOn_ && actor_) {
+        const uint64_t now = NowMs();
+        if (now - lightLastReapplyMs_ >= kFlashlightReapplyMs) {
+            lightLastReapplyMs_ = now;
+            if (void* mp = reinterpret_cast<uint8_t*>(actor_)) {
+                if (void* light_R = *reinterpret_cast<void**>(
+                        mp + P::off::AmainPlayer_light_R)) {
+                    if (R::IsLive(light_R)) {
+                        E::SetSceneComponentVisibility(light_R, true, false);
+                        E::SetLightIntensity(light_R, lightIntensity_);
+                        if (lightOuterCone_ > 0.f)
+                            E::SetSpotLightOuterConeAngle(light_R, lightOuterCone_);
+                        if (lightInnerCone_ >= 0.f)
+                            E::SetSpotLightInnerConeAngle(light_R, lightInnerCone_);
+                    }
+                }
+            }
+        }
+    }
+
     // Skip the engine write when nothing has changed since the last push (frozen
     // at target between packets). The puppet -- whether SkelMesh backup or
     // mainPlayer_C orphan -- runs no physics integration (SkelMesh has no
@@ -475,6 +502,17 @@ void RemotePlayer::SetRagdollPose(const coop::net::RagdollPoseSnapshot& snap) {
     if (ragdoll_.SetPose(snap)) dirty_ = true;
 }
 
+void RemotePlayer::SetCachedLightState(bool on, float intensity, float outerCone, float innerCone) {
+    lightOn_ = on;
+    lightIntensity_ = intensity;
+    lightOuterCone_ = outerCone;
+    lightInnerCone_ = innerCone;
+    // Reset the re-apply timer so the first re-apply happens kFlashlightReapplyMs
+    // after the state change, not immediately (the ApplyToPuppet call already
+    // performed the initial MarkRenderStateDirty).
+    lightLastReapplyMs_ = NowMs();
+}
+
 void RemotePlayer::Destroy() {
     if (!actor_) return;
     // The puppet's own CMC carries Velocity / MovementMode that BUA reads
@@ -502,6 +540,7 @@ void RemotePlayer::Destroy() {
     hurtFlashEndMs_ = 0;         // v20 Inc3: clear the hurt-flash (nameplate already unregistered)
     hurtFlashActive_ = false;
     hurtSavedMaterials_.clear(); // the mesh died with the actor -- no restore needed, drop stale ptrs
+    lightOn_ = false;            // Phase 5F: clear cached flashlight state (puppet is gone)
     appliedSkin_.clear();        // v93: the next Spawn re-applies from SkinForSlot
     UE_LOGI("RemotePlayer::Destroy: puppet + nameplate gone");
 }

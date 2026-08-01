@@ -83,6 +83,11 @@ public:
     // Game thread only.
     void SetRagdollPose(const coop::net::RagdollPoseSnapshot& snap);
 
+    // Phase 5F flashlight proxy keep-alive: called by item_activate::ApplyToPuppet
+    // to cache the light state for periodic re-apply. Prevents UE4 from destroying
+    // the light proxy at distance. Game thread only.
+    void SetCachedLightState(bool on, float intensity, float outerCone, float innerCone);
+
     // Tear down the puppet: DestroyActor on the engine SkeletalMeshActor and
     // unregister the floating nameplate. Called on peer disconnect (Bye /
     // exit) -- otherwise the puppet lingers in the world frozen at its last
@@ -313,6 +318,16 @@ private:
     // clear -> MOVE_Walking=1. The kerfur AnimBP reads MovementMode
     // natively to gate the foot-IK alpha (useLegIK/rise).
     uint8_t          curStateBits_ = 0;
+
+    // Phase 5F flashlight proxy keep-alive: cached light state for periodic
+    // re-apply that prevents UE4 from destroying the light proxy at distance.
+    // Updated by item_activate::ApplyToPuppet; re-applied every kFlashlightReapplyMs.
+    bool     lightOn_ = false;
+    float    lightIntensity_ = 0.f;
+    float    lightOuterCone_ = 0.f;
+    float    lightInnerCone_ = 0.f;
+    uint64_t lightLastReapplyMs_ = 0;
+    static constexpr uint64_t kFlashlightReapplyMs = 2000;
     // Ragdoll display (2026-06-01 xray-actor rework, [[project-ragdoll-sync]]):
     // the whole lifecycle (wire-bit edge -> spawn invisible playerRagdoll_C +
     // pelvis-attach; v22 pelvis stream; attached-transform drive; teardown) lives

@@ -15,6 +15,7 @@
 #include "coop/interactables/deck_play_sync.h"    // v117 (L6): PlayDeckEvent
 #include "coop/interactables/desk_input_sync.h"
 #include "coop/interactables/desk_snd_fx.h"
+#include "coop/interactables/device_occupancy.h"  // A4: IsClaimedBy predicate (non-enforcing)
 #include "coop/interactables/dish_sync.h"
 #include "coop/interactables/laptop_sync.h"      // v116: LaptopState (+ v121 LaptopBlob)
 #include "coop/interactables/laptop_buffer_sync.h"  // v121: LaptopQuad
@@ -87,6 +88,14 @@ bool HandleSignalEvent(net::Session& /*session*/,
             (msg.senderPeerSlot >= 0 && msg.senderPeerSlot < net::kMaxPeers)
                 ? static_cast<uint8_t>(msg.senderPeerSlot)
                 : static_cast<uint8_t>(0xFF);
+        // A4 NON-FORCING (2026-08-01): log if sender doesn't hold the laptop claim.
+        // Will flip to enforcing after soak period.
+        if (session.role() == net::Role::Host && lslot != 0xFF &&
+            !coop::device_occupancy::IsClaimedBy(L"laptop", lslot)) {
+            UE_LOGW("event_feed: LaptopState from slot %u who does NOT hold 'laptop' claim "
+                    "(holder=%u) -- APPLYING (non-enforcing)", lslot,
+                    coop::device_occupancy::HolderOf(L"laptop"));
+        }
         coop::laptop_sync::OnLaptopState(lp, lslot);
         break;
     }
@@ -138,6 +147,13 @@ bool HandleSignalEvent(net::Session& /*session*/,
             (msg.senderPeerSlot >= 0 && msg.senderPeerSlot < net::kMaxPeers)
                 ? static_cast<uint8_t>(msg.senderPeerSlot)
                 : static_cast<uint8_t>(0xFF);
+        // A4 NON-FORCING (2026-08-01): log if sender doesn't hold the desk claim.
+        if (session.role() == net::Role::Host && dslot != 0xFF &&
+            !coop::device_occupancy::IsClaimedBy(L"desk", dslot)) {
+            UE_LOGW("event_feed: DriveSlotState from slot %u who does NOT hold 'desk' claim "
+                    "(holder=%u) -- APPLYING (non-enforcing)", dslot,
+                    coop::device_occupancy::HolderOf(L"desk"));
+        }
         coop::drive_sync::OnDriveSlotState(ds, dslot);
         break;
     }
@@ -154,6 +170,13 @@ bool HandleSignalEvent(net::Session& /*session*/,
             (msg.senderPeerSlot >= 0 && msg.senderPeerSlot < net::kMaxPeers)
                 ? static_cast<uint8_t>(msg.senderPeerSlot)
                 : static_cast<uint8_t>(0xFF);
+        // A4 NON-FORCING: log if sender doesn't hold the desk claim.
+        if (session.role() == net::Role::Host && dpslot != 0xFF &&
+            !coop::device_occupancy::IsClaimedBy(L"desk", dpslot)) {
+            UE_LOGW("event_feed: DrivePayload from slot %u who does NOT hold 'desk' claim "
+                    "(holder=%u) -- APPLYING (non-enforcing)", dpslot,
+                    coop::device_occupancy::HolderOf(L"desk"));
+        }
         coop::drive_sync::OnDrivePayloadChunk(dp, dpslot);
         break;
     }
@@ -170,6 +193,13 @@ bool HandleSignalEvent(net::Session& /*session*/,
             (msg.senderPeerSlot >= 0 && msg.senderPeerSlot < net::kMaxPeers)
                 ? static_cast<uint8_t>(msg.senderPeerSlot)
                 : static_cast<uint8_t>(0xFF);
+        // A4 NON-FORCING: log if sender doesn't hold the desk claim.
+        if (session.role() == net::Role::Host && rcslot != 0xFF &&
+            !coop::device_occupancy::IsClaimedBy(L"desk", rcslot)) {
+            UE_LOGW("event_feed: RackState from slot %u who does NOT hold 'desk' claim "
+                    "(holder=%u) -- APPLYING (non-enforcing)", rcslot,
+                    coop::device_occupancy::HolderOf(L"desk"));
+        }
         coop::drive_rack_sync::OnRackStateChunk(rc, rcslot);
         break;
     }
@@ -186,6 +216,13 @@ bool HandleSignalEvent(net::Session& /*session*/,
             (msg.senderPeerSlot >= 0 && msg.senderPeerSlot < net::kMaxPeers)
                 ? static_cast<uint8_t>(msg.senderPeerSlot)
                 : static_cast<uint8_t>(0xFF);
+        // A4 NON-FORCING: log if sender doesn't hold the desk claim.
+        if (session.role() == net::Role::Host && mslot != 0xFF &&
+            !coop::device_occupancy::IsClaimedBy(L"desk", mslot)) {
+            UE_LOGW("event_feed: MeadowAppend from slot %u who does NOT hold 'desk' claim "
+                    "(holder=%u) -- APPLYING (non-enforcing)", mslot,
+                    coop::device_occupancy::HolderOf(L"desk"));
+        }
         coop::meadow_db_sync::OnAppendChunk(mc, mslot);
         break;
     }
@@ -202,6 +239,13 @@ bool HandleSignalEvent(net::Session& /*session*/,
             (msg.senderPeerSlot >= 0 && msg.senderPeerSlot < net::kMaxPeers)
                 ? static_cast<uint8_t>(msg.senderPeerSlot)
                 : static_cast<uint8_t>(0xFF);
+        // A4 NON-FORCING: log if sender doesn't hold the desk claim.
+        if (session.role() == net::Role::Host && mdslot != 0xFF &&
+            !coop::device_occupancy::IsClaimedBy(L"desk", mdslot)) {
+            UE_LOGW("event_feed: MeadowDelete from slot %u who does NOT hold 'desk' claim "
+                    "(holder=%u) -- APPLYING (non-enforcing)", mdslot,
+                    coop::device_occupancy::HolderOf(L"desk"));
+        }
         coop::meadow_db_sync::OnDelete(mh, mdslot);
         break;
     }
@@ -236,6 +280,13 @@ bool HandleSignalEvent(net::Session& /*session*/,
             (msg.senderPeerSlot >= 0 && msg.senderPeerSlot < net::kMaxPeers)
                 ? static_cast<uint8_t>(msg.senderPeerSlot)
                 : static_cast<uint8_t>(0xFF);
+        // A4 NON-FORCING: log if sender doesn't hold the laptop claim.
+        if (session.role() == net::Role::Host && lbslot != 0xFF &&
+            !coop::device_occupancy::IsClaimedBy(L"laptop", lbslot)) {
+            UE_LOGW("event_feed: LaptopBlobChunk from slot %u who does NOT hold 'laptop' claim "
+                    "(holder=%u) -- APPLYING (non-enforcing)", lbslot,
+                    coop::device_occupancy::HolderOf(L"laptop"));
+        }
         coop::laptop_sync::OnLaptopBlobChunk(lb, lbslot);
         break;
     }
@@ -253,6 +304,13 @@ bool HandleSignalEvent(net::Session& /*session*/,
             (msg.senderPeerSlot >= 0 && msg.senderPeerSlot < net::kMaxPeers)
                 ? static_cast<uint8_t>(msg.senderPeerSlot)
                 : static_cast<uint8_t>(0xFF);
+        // A4 NON-FORCING: log if sender doesn't hold the laptop claim.
+        if (session.role() == net::Role::Host && lqslot != 0xFF &&
+            !coop::device_occupancy::IsClaimedBy(L"laptop", lqslot)) {
+            UE_LOGW("event_feed: LaptopQuad from slot %u who does NOT hold 'laptop' claim "
+                    "(holder=%u) -- APPLYING (non-enforcing)", lqslot,
+                    coop::device_occupancy::HolderOf(L"laptop"));
+        }
         coop::laptop_buffer_sync::OnQuadChunk(lq, lqslot);
         break;
     }

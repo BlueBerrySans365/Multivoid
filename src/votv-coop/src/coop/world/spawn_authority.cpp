@@ -120,6 +120,11 @@ MAKE_SPAWN_CANCEL(OnFurfurAltarTickPre,       "furfurAltarSpawner.ReceiveTick")
 // Group B/C: UFO dropper (timeline-driven drop) — host rolls, client suppresses.
 // Products: kerfurOmega (kNpcAllowlist), fallingBody_C/lampPost_C (kAmbientPropSpawnMirrorClasses).
 MAKE_SPAWN_CANCEL(OnUfoDropperDropPre,        "ufoDropper.Timeline_0__drop__EventFunc")
+// Group B/C (2026-08-01): tick-driven spawners with random-delay timers.
+MAKE_SPAWN_CANCEL(OnHexahiveTickPre,          "hexahiveSpawner.ReceiveTick")
+MAKE_SPAWN_CANCEL(OnBp7TickPre,               "bp7Spawner.ReceiveTick")
+MAKE_SPAWN_CANCEL(OnDeerTickPre,              "deerSpawner.ReceiveTick")
+MAKE_SPAWN_CANCEL(OnMannequinTickPre,         "mannequinSpawner.ReceiveTick")
 
 #undef MAKE_SPAWN_CANCEL
 
@@ -158,6 +163,12 @@ CancelTarget g_cancelTargets[] = {
     // Group B/C: UFO dropper (timeline-driven drop) — host rolls, client suppresses.
     // Products: kerfurOmega (kNpcAllowlist), fallingBody_C/lampPost_C (kAmbientPropSpawnMirrorClasses).
     {L"ufoDropper_C",              L"Timeline_0__drop__EventFunc", &OnUfoDropperDropPre, false},
+    // Group B/C (2026-08-01): tick-driven spawners with random-delay timers.
+    // Products: hexahive_C, bp7_C, deer_C, mannequin_C (props) -- all in kAmbientPropSpawnMirrorClasses.
+    {L"ticker_hexahiveSpawner_C",  L"ReceiveTick",     &OnHexahiveTickPre,         false},
+    {L"ticker_bp7Spawner_C",       L"ReceiveTick",     &OnBp7TickPre,              false},
+    {L"ticker_deerSpawner_C",      L"ReceiveTick",     &OnDeerTickPre,             false},
+    {L"ticker_mannequinSpawner_C", L"ReceiveTick",     &OnMannequinTickPre,        false},
 };
 
 // ---- t1 PARK rows ----
@@ -169,6 +180,13 @@ constexpr const wchar_t* kParkClassNames[] = {
     // Both parked on an active client session (roach_sync drives the mirror).
     L"cockroachMaster_C",
     L"ticker_roachSummoner_C",
+    // Group B/C (2026-08-01): tick-driven spawners with random-delay timers.
+    // Client-local RNG diverges from host; park + mirror products via
+    // kAmbientPropSpawnMirrorClasses / kNpcAllowlist.
+    L"ticker_hexahiveSpawner_C",   // spawns hexahive (prop) on random delay
+    L"ticker_bp7Spawner_C",        // spawns bp7 (prop) on random delay
+    L"ticker_deerSpawner_C",       // spawns deer (prop) on random delay -- probe v10 pending
+    L"ticker_mannequinSpawner_C",  // spawns mannequin (prop) on random delay -- probe v10 pending
 };
 constexpr size_t kParkClassCount = std::size(kParkClassNames);
 

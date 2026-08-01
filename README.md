@@ -1,5 +1,8 @@
 # Multivoid
 
+> This forked version tries to continue the work with syncing problems, *do not use it*, instead, use the original [Multivoid](https://github.com/VOTV-MP/Multivoid)
+> Also, I'm sorry for some broken sh*t, I'm linux user, and my friend can't compile stuff on his machine.
+
 > **Multiplayer for Voices of the Void.**
 > A standalone mod that adds drop-in co-op to a single-player UE4.27 game —
 > **no original game files are modified**.

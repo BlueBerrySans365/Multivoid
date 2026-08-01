@@ -323,6 +323,23 @@ void RepointContainer(void* drone) {
     void** slot = reinterpret_cast<void**>(reinterpret_cast<char*>(drone) + g_containerOff);
     if (*slot && R::IsLive(*slot)) return;  // already pointed at a live container
     if (void* c = R::FindObjectByClass(L"prop_inventoryContainer_drone_C")) {
+        // SAFETY: verify this is NOT the player's personal inventory container. The player's
+        // inventory is GObjStack[0] (propInventory.Index == 0, propInventory.Player == true).
+        // If the drone container somehow has Index == 0, pointing at it would show the player's
+        // entire inventory in the drone bag UI. Reject containers with Index == 0.
+        if (void* invComp = *reinterpret_cast<void**>(
+                reinterpret_cast<char*>(c) + 0x04F8)) {  // prop_container_C.propInventory @0x04F8
+            if (R::IsLive(invComp)) {
+                // propInventory_C.Index @0x00B0 (from CXXHeaderDump/propInventory.hpp)
+                const int32_t idx = *reinterpret_cast<int32_t*>(
+                    reinterpret_cast<char*>(invComp) + 0x00B0);
+                if (idx == 0) {
+                    UE_LOGW("drone: RepointContainer REJECTED container %p (Index==0, "
+                            "this is the player's personal inventory) -- not repointing", c);
+                    return;
+                }
+            }
+        }
         *slot = c;
         UE_LOGI("drone: repointed mirror container @0x%04X -> %p (prop-mirrored 'droneContainer')",
                 g_containerOff, c);

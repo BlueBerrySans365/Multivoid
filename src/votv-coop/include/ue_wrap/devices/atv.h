@@ -52,6 +52,18 @@ bool IsDriven(void* atv);
 float GetFuel(void* atv);    // fuel@0x05D4   (0..100)
 float GetHealth(void* atv);  // health@0x05E4 (0..100)
 bool  GetBrake(void* atv);   // Brake@0x05D9  (handbrake)
+bool  GetIsDrive(void* atv); // isDrive@0x05D0 (engine running, fuel>0 + started)
+bool  GetBroken(void* atv);  // brokenn@0x05E9 (latched when health<=0)
+
+// Phase-2 authority writes (mirror apply). DriveHealth calls updHealth() -> smoke VFX.
+void  DriveFuel(void* atv, float fuel);
+void  DriveHealth(void* atv, float health);
+void  SetBroken(void* atv, bool broken);
+void  SetEngineOn(void* atv, bool on);
+
+// Spawn explosion_C VFX-only at the given location (NOT calling explode() which re-impulses).
+// Reuses the GameplayStatics spawn machinery. Returns the spawned actor, or nullptr on failure.
+void* SpawnExplosion(const FVector& loc);
 
 // CLIENT mirror: snap the root body to the streamed transform (kinematic -- physics is off via
 // PrepareMirror). SetActorLocation(teleport) + SetActorRotation(teleportPhysics). False on failure.

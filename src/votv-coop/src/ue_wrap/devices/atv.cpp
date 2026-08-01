@@ -28,6 +28,11 @@ int32_t g_isDrivenOff = -1;       // isDriven (0x05F7, bool)
 int32_t g_fuelOff     = -1;       // fuel     (0x05D4, float)
 int32_t g_healthOff   = -1;       // health   (0x05E4, float)
 int32_t g_brakeOff    = -1;       // Brake    (0x05D9, bool)
+int32_t g_isDriveOff  = -1;       // isDrive  (0x05D0, bool) -- engine running (fuel>0 + started)
+int32_t g_brokenOff   = -1;       // brokenn  (0x05E9, bool) -- latched when health<=0
+
+std::atomic<bool> g_fxResolved{false};
+void*   g_updHealthFn = nullptr;  // updHealth() UFunction on ATV_C (parameterless, drives smoke VFX)
 
 int32_t ResolveOff(void* cls, const wchar_t* name, int32_t fallback) {
     int32_t o = R::FindPropertyOffset(cls, name);
@@ -52,12 +57,15 @@ bool EnsureResolved() {
     g_fuelOff     = ResolveOff(cls, L"fuel",     0x05D4);
     g_healthOff   = ResolveOff(cls, L"health",   0x05E4);
     g_brakeOff    = ResolveOff(cls, L"Brake",    0x05D9);
+    g_isDriveOff  = ResolveOff(cls, L"isDrive",  0x05D0);
+    g_brokenOff   = ResolveOff(cls, L"brokenn",  0x05E9);
 
     g_cls = cls;
     g_resolved.store(true, std::memory_order_release);
     UE_LOGI("atv: resolved ATV_C=%p Key@0x%04X Player@0x%04X isDriven@0x%04X fuel@0x%04X "
-            "health@0x%04X Brake@0x%04X",
-            cls, g_keyOff, g_playerOff, g_isDrivenOff, g_fuelOff, g_healthOff, g_brakeOff);
+            "health@0x%04X Brake@0x%04X isDrive@0x%04X brokenn@0x%04X",
+            cls, g_keyOff, g_playerOff, g_isDrivenOff, g_fuelOff, g_healthOff, g_brakeOff,
+            g_isDriveOff, g_brokenOff);
     return true;
 }
 
@@ -112,6 +120,111 @@ float GetHealth(void* atv) {
 bool GetBrake(void* atv) {
     if (!atv || g_brakeOff < 0) return false;
     return *reinterpret_cast<const bool*>(reinterpret_cast<const char*>(atv) + g_brakeOff);
+}
+
+bool GetIsDrive(void* atv) {
+    if (!atv || g_isDriveOff < 0) return false;
+    return *reinterpret_cast<const bool*>(reinterpret_cast<const char*>(atv) + g_isDriveOff);
+}
+
+bool GetBroken(void* atv) {
+    if (!atv || g_brokenOff < 0) return false;
+    return *reinterpret_cast<const bool*>(reinterpret_cast<const char*>(atv) + g_brokenOff);
+}
+
+// Lazy-resolve updHealth() UFunction (separate latch from the pose resolve -- smoke resolution
+// never gates the pose path, same discipline as drone.cpp's EnsureFxResolved).
+bool EnsureFxResolved() {
+    if (g_fxResolved.load(std::memory_order_acquire)) return true;
+    if (!g_cls) return false;
+    g_updHealthFn = R::FindFunction(g_cls, L"updHealth");
+    g_fxResolved.store(true, std::memory_order_release);
+    if (g_updHealthFn)
+        UE_LOGI("atv: resolved updHealth UFunction=%p", g_updHealthFn);
+    else
+        UE_LOGW("atv: updHealth UFunction NOT found -- smoke VFX will degrade (field poked, no repaint)");
+    return true;
+}
+
+void DriveFuel(void* atv, float fuel) {
+    if (!atv || g_fuelOff < 0) return;
+    *reinterpret_cast<float*>(reinterpret_cast<char*>(atv) + g_fuelOff) = fuel;
+}
+
+void DriveHealth(void* atv, float health) {
+    if (!atv || g_healthOff < 0) return;
+    *reinterpret_cast<float*>(reinterpret_cast<char*>(atv) + g_healthOff) = health;
+    // Call updHealth() to repaint the smoke VFX (freq + color + Activate). The particle
+    // component's own component-tick survives SetActorTickEnabled(false) (drone dust precedent).
+    EnsureFxResolved();
+    if (g_updHealthFn && R::IsLive(atv))
+        R::CallFunction(atv, g_updHealthFn, nullptr);
+}
+
+void SetBroken(void* atv, bool broken) {
+    if (!atv || g_brokenOff < 0) return;
+    *reinterpret_cast<bool*>(reinterpret_cast<char*>(atv) + g_brokenOff) = broken;
+}
+
+void SetEngineOn(void* atv, bool on) {
+    if (!atv || g_isDriveOff < 0) return;
+    *reinterpret_cast<bool*>(reinterpret_cast<char*>(atv) + g_isDriveOff) = on;
+}
+
+void* SpawnExplosion(const FVector& loc) {
+    // Spawn explosion_C at the given location via GameplayStatics (same pattern as SpawnMirror).
+    static void* sExplosionCls = nullptr;
+    static bool  sTried = false;
+    if (!sTried) {
+        sTried = true;
+        sExplosionCls = R::FindClass(L"explosion_C");
+        if (!sExplosionCls) UE_LOGW("atv: SpawnExplosion -- explosion_C class not found");
+    }
+    if (!sExplosionCls) return nullptr;
+
+    static void* sGsCdo   = nullptr;
+    static void* sBeginFn = nullptr;
+    static void* sFinishFn = nullptr;
+    if (!sGsCdo) sGsCdo = R::FindClassDefaultObject(L"GameplayStatics");
+    if (sGsCdo && (!sBeginFn || !sFinishFn)) {
+        if (void* gc = R::FindClass(L"GameplayStatics")) {
+            sBeginFn  = R::FindFunction(gc, L"BeginDeferredActorSpawnFromClass");
+            sFinishFn = R::FindFunction(gc, L"FinishSpawningActor");
+        }
+    }
+    if (!sGsCdo || !sBeginFn || !sFinishFn) {
+        static bool sWarned = false;
+        if (!sWarned) { sWarned = true;
+            UE_LOGW("atv: SpawnExplosion -- GameplayStatics BeginDeferred/Finish unresolved"); }
+        return nullptr;
+    }
+    void* worldCtx = engine::GetWorldContext();
+    if (!worldCtx) return nullptr;
+
+    FTransform xform{};
+    xform.TX = loc.X; xform.TY = loc.Y; xform.TZ = loc.Z;
+
+    void* spawned = nullptr;
+    {
+        ParamFrame begin(sBeginFn);
+        if (!begin.valid()) return nullptr;
+        begin.Set<void*>(L"WorldContextObject", worldCtx);
+        begin.Set<void*>(L"ActorClass", sExplosionCls);
+        begin.SetRaw(L"SpawnTransform", &xform, sizeof(xform));
+        begin.Set<uint8_t>(L"CollisionHandlingOverride", uint8_t{1});  // AlwaysSpawn
+        begin.Set<void*>(L"Owner", nullptr);
+        if (!Call(sGsCdo, begin)) return nullptr;
+        spawned = begin.Get<void*>(L"ReturnValue");
+    }
+    if (!spawned) return nullptr;
+    {
+        ParamFrame finish(sFinishFn);
+        if (!finish.valid()) { DestroyMirror(spawned); return nullptr; }
+        finish.Set<void*>(L"Actor", spawned);
+        finish.SetRaw(L"SpawnTransform", &xform, sizeof(xform));
+        if (!Call(sGsCdo, finish)) { DestroyMirror(spawned); return nullptr; }
+    }
+    return spawned;
 }
 
 bool DriveMirrorTransform(void* atv, const FVector& loc, const FRotator& rot) {

@@ -34,6 +34,35 @@
 
 namespace coop::event_feed {
 
+namespace {
+
+// A3 Half 1 (2026-08-01): relay a PropDestroy/PropConvert AFTER game-thread
+// validation. The net-thread relay (session.cpp) was removed from the whitelist
+// for these kinds so a forged packet is NOT fanned out before the host validates.
+// This reconstructs the raw packet (PacketHeader + ReliableHeader + payload) and
+// calls session.RelayReliableToOtherClients on the game thread. The session is
+// passed by reference from the caller (event_feed::Update holds it).
+void RelayAfterValidation(net::Session& session,
+                          const net::Session::ReliableMessage& msg) {
+    if (session.role() != net::Role::Host) return;
+    if (msg.senderPeerSlot < 0 || msg.senderPeerSlot >= net::kMaxPeers) return;
+    // Reconstruct the raw packet: PacketHeader + ReliableHeader + payload.
+    constexpr size_t kHdrSize = sizeof(net::PacketHeader) + sizeof(net::ReliableHeader);
+    const size_t totalLen = kHdrSize + msg.payloadLen;
+    if (totalLen > net::kMaxPacketBytes) return;
+    uint8_t buf[net::kMaxPacketBytes]{};
+    auto* ph = reinterpret_cast<net::PacketHeader*>(buf);
+    ph->kind = static_cast<uint8_t>(msg.kind);
+    ph->senderPeerSlot = static_cast<uint8_t>(msg.senderPeerSlot);
+    auto* rh = reinterpret_cast<net::ReliableHeader*>(buf + sizeof(net::PacketHeader));
+    rh->kind = static_cast<uint8_t>(msg.kind);
+    rh->_pad = 0;
+    std::memcpy(buf + kHdrSize, msg.payload, msg.payloadLen);
+    session.RelayReliableToOtherClients(msg.senderPeerSlot, msg.kind, buf, static_cast<int>(totalLen));
+}
+
+}  // namespace
+
 bool HandleEntityEvent(net::Session& session,
                        const net::Session::ReliableMessage& msg,
                        void* localPlayer) {
@@ -310,7 +339,9 @@ bool HandleEntityEvent(net::Session& session,
                 dkey.push_back(static_cast<wchar_t>(static_cast<unsigned char>(p.key.data[i])));
             coop::trash_pile_sync::NotifyWireDestroy(dkey);
         }
-        remote_prop::OnDestroy(p, localPlayer);
+        remote_prop::OnDestroy(p, localPlayer, msg.senderPeerSlot);
+        // A3 Half 1: relay AFTER validation (was: net-thread relay before validation).
+        RelayAfterValidation(session, msg);
         break;
     }
     case net::ReliableKind::PropConvert: {
@@ -369,6 +400,8 @@ bool HandleEntityEvent(net::Session& session,
             UE_LOGW("event_feed: PropConvert newEid=%u pile spawn FAILED -- a re-grab of this "
                     "pile won't propagate its destroy", p.newEid);
         }
+        // A3 Half 1: relay AFTER validation (was: net-thread relay before validation).
+        RelayAfterValidation(session, msg);
         break;
     }
     case net::ReliableKind::PropSnapPos: {

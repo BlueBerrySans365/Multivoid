@@ -35,12 +35,13 @@ void OnClientConnect(int slot);
 // on the host (authoritative). GT::Posts the write.
 void ApplyFromHost(int32_t total);
 
-// RECEIVER (host): apply a client's signed DELTA request via AddPoints (the poll then
-// re-broadcasts the new total). No-op on a client. GT::Posts the apply.
-void OnDeltaRequest(int32_t amount);
+// RETIRED (2026-08-01, A5): the BalanceDelta lane is retired (RULE 2). The sole caller
+// was the dev +1000 button, now host-only. Kept as dead code for documentation; the
+// event_feed.cpp case drops on receipt.
+void OnDeltaRequest(int32_t amount);  // RETIRED — dead code
 
-// Route a LOCAL credit (the +1000 dev button): host/solo applies via AddPoints; a client
-// sends a BalanceDelta to the host. Safe from the render thread (menu).
+// Route a LOCAL credit (the +1000 dev button): host/solo applies via AddPoints. A5 (2026-08-01):
+// the BalanceDelta lane is retired, so clients can no longer route credits. Safe from render thread.
 void CreditRouted(int32_t amount);
 
 // Reset the broadcast dedup on session teardown (so a reconnect re-broadcasts).

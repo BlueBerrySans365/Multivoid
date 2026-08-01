@@ -48,6 +48,11 @@ constexpr uint64_t kSweepMs = 250;
 // transport ceiling and a truncated blob is a silent lie. Real containers hold single digits.
 constexpr size_t kMaxRecordsPerContainer = 512;
 
+// Increment 2: depth cap for nested container transitive walk. A container inside a container
+// inside a container (depth 3) is already unusual; deeper nesting is a sign of data corruption
+// or adversarial input. The cap bounds both the recursion depth and the total blob size.
+constexpr int kMaxDepth = 3;
+
 std::atomic<coop::net::Session*> g_session{nullptr};
 
 bool g_verbsRegistered = false;
@@ -299,7 +304,12 @@ void AppU16(std::vector<uint8_t>& b, uint16_t v) {
     b.push_back(static_cast<uint8_t>(v >> 8));
 }
 
-bool ReadContents(void* inv, std::vector<SR::SaveRecord>& out) {
+// Increment 2: read with recursive nested-container walk. `depth` is 0 for top-level containers
+// and increments for each level of nesting. Nested containers beyond kMaxDepth are shipped with
+// neutered index and NO sub-records (the receiver sees them as empty, same as increment 1).
+// `visited` prevents infinite cycles (A contains B contains A).
+bool ReadContents(void* inv, std::vector<SR::SaveRecord>& out, int depth,
+                  std::set<uint32_t>& visited) {
     uint8_t* slot = GObjStackSlot(inv);
     if (!slot) return false;
     const SR::Arr objs = SR::ReadArr(slot, 0);  // struct_mObject.obj @ +0
@@ -313,7 +323,66 @@ bool ReadContents(void* inv, std::vector<SR::SaveRecord>& out) {
     for (int32_t i = 0; i < objs.num; ++i) {
         SR::SaveRecord r;
         SR::ReadSaveRecord(objs.data + static_cast<size_t>(i) * SR::kSaveStride, r);
-        if (RecordIsNestedContainer(r)) NeuterNestedIndex(r);
+        if (RecordIsNestedContainer(r)) {
+            // Capture the nested container's OWN GObjStack index BEFORE neutering. This index
+            // is sender-local (meaningless on the receiver) but we need it to read the nested
+            // container's contents from GObjStack on the SENDER side.
+            const int32_t nestedIdx = r.ints.empty() ? -1
+                : (r.ints[0].empty() ? -1 : r.ints[0][0]);
+            NeuterNestedIndex(r);
+            // Increment 2: recurse into the nested container's own GObjStack slot if within
+            // depth cap and no cycle. The nested container's ints[0][0] IS its own GObjStack
+            // index on the SENDER (meaningless on the receiver), so we read its contents here
+            // and ship them inline.
+            if (depth < kMaxDepth && nestedIdx >= 0) {
+                // Resolve the nested container's inventory by scanning live prop_container_C
+                // actors whose propInventory.Index == nestedIdx. This is O(N) per nested
+                // container but nested containers are rare (single digits in real play).
+                void* nestedInv = nullptr;
+                std::vector<coop::element::Registry::ActorIdPair> pairs;
+                coop::element::Registry::Get().SnapshotActorsByType(
+                    coop::element::ElementType::Prop, pairs);
+                void* base = ContainerClass();
+                if (base) {
+                    for (const auto& pr : pairs) {
+                        if (!pr.actor || !R::IsLiveByIndex(pr.actor, pr.internalIdx))
+                            continue;
+                        if (!ue_wrap::prop::WalksToBase(R::ClassOf(pr.actor), base))
+                            continue;
+                        void* nInv = InventoryOf(pr.actor);
+                        if (!nInv || !IsWorldContainerInventory(nInv)) continue;
+                        if (CachedOffset(g_offInvIndex, R::ClassOf(nInv), L"Index") < 0)
+                            continue;
+                        if (ReadAt<int32_t>(nInv, g_offInvIndex) == nestedIdx) {
+                            nestedInv = nInv;
+                            break;
+                        }
+                    }
+                }
+                if (nestedInv) {
+                    // Resolve the nested container's eid for cycle detection.
+                    void* nestedOwner = OwnerOf(nestedInv);
+                    const uint32_t nestedEid = nestedOwner
+                        ? static_cast<uint32_t>(
+                              coop::element::Registry::Get().EidForActor(nestedOwner))
+                        : 0;
+                    if (nestedEid != 0 && nestedEid !=
+                            static_cast<uint32_t>(coop::element::kInvalidId)) {
+                        if (visited.count(nestedEid)) {
+                            UE_LOGW("container_contents: nested eid=%u cycle detected at depth "
+                                    "%d -- shipping empty", nestedEid, depth);
+                        } else {
+                            visited.insert(nestedEid);
+                            std::vector<SR::SaveRecord> nestedRecs;
+                            if (ReadContents(nestedInv, nestedRecs, depth + 1, visited)) {
+                                r.subRecords = std::move(nestedRecs);
+                            }
+                            visited.erase(nestedEid);
+                        }
+                    }
+                }
+            }
+        }
         out.push_back(std::move(r));
     }
     return true;
@@ -336,14 +405,27 @@ bool RdU64(const std::vector<uint8_t>& b, size_t& o, uint64_t& v) {
 // what lets the host distinguish "the client edited the world I published" from "the client
 // edited a world that has since moved on" -- without it a full-slice write from a stale author
 // would silently erase a host addition the author had not yet received.
+//
+// Increment 2: each record is prefixed with a depth byte (0 = top-level, 1+ = nested). Sub-records
+// of a nested container follow immediately after their parent, each prefixed with their own depth
+// byte. The receiver reconstructs the tree via a depth stack.
 std::vector<uint8_t> PackContents(uint32_t eid, uint64_t baseHash,
-                                  const std::vector<SR::SaveRecord>& recs) {
+                                  const std::vector<SR::SaveRecord>& recs, int depth = 0) {
     std::vector<uint8_t> b;
     b.push_back(kOpContents);
     W::AppU32(b, eid);
     AppU64(b, baseHash);
     AppU16(b, static_cast<uint16_t>(recs.size()));
-    for (const auto& r : recs) W::SerSave(b, r);
+    for (const auto& r : recs) {
+        W::AppU8(b, static_cast<uint8_t>(depth));
+        W::SerSave(b, r);
+        if (!r.subRecords.empty()) {
+            for (const auto& sub : r.subRecords) {
+                W::AppU8(b, static_cast<uint8_t>(depth + 1));
+                W::SerSave(b, sub);
+            }
+        }
+    }
     return b;
 }
 
@@ -352,8 +434,11 @@ std::vector<uint8_t> PackContents(uint32_t eid, uint64_t baseHash,
 // peer authored them or what base that author edited from. Hashing the raw blob instead would
 // make an author's private bookkeeping part of the content identity, and the host's CAS would
 // then compare two quantities that can never be equal.
+//
+// Increment 2: depth=0 ensures the hash covers ALL nested sub-records (the full tree), matching
+// the actual blob that BroadcastContainer ships.
 uint64_t ContentHash(uint32_t eid, const std::vector<SR::SaveRecord>& recs) {
-    return coop::blob_chunks::Fnv64(PackContents(eid, 0, recs));
+    return coop::blob_chunks::Fnv64(PackContents(eid, 0, recs, /*depth=*/0));
 }
 
 // ---- host: broadcast one container -----------------------------------------------------------
@@ -364,7 +449,11 @@ uint64_t ContentHash(uint32_t eid, const std::vector<SR::SaveRecord>& recs) {
 // call reaches the host alone (a client's only peer), which is exactly the author->arbiter edge.
 bool BroadcastContainer(coop::net::Session* s, uint32_t eid, void* inv, int toSlot, bool force) {
     std::vector<SR::SaveRecord> recs;
-    if (!ReadContents(inv, recs)) return true;  // nothing resolvable -- not a transport failure
+    // Increment 2: depth=0 for top-level read; visited set tracks eids to prevent cycles.
+    std::set<uint32_t> visited;
+    visited.insert(eid);
+    if (!ReadContents(inv, recs, /*depth=*/0, visited))
+        return true;  // nothing resolvable -- not a transport failure
     // The base we are editing from: for a client, the last host truth it applied. The host
     // authors from its own state and sends 0 (its word IS the base).
     uint64_t baseHash = 0;
@@ -372,7 +461,7 @@ bool BroadcastContainer(coop::net::Session* s, uint32_t eid, void* inv, int toSl
         auto it = g_baseHash.find(eid);
         if (it != g_baseHash.end()) baseHash = it->second;
     }
-    const std::vector<uint8_t> blob = PackContents(eid, baseHash, recs);
+    const std::vector<uint8_t> blob = PackContents(eid, baseHash, recs, /*depth=*/0);
     const uint64_t h = ContentHash(eid, recs);
     if (!force) {
         auto it = g_sentHash.find(eid);
@@ -611,6 +700,124 @@ bool HostAcceptsClientWrite(uint32_t eid, uint64_t baseHash, uint8_t authorSlot)
     return false;
 }
 
+// Increment 2: recursively apply sub-records to nested containers' own GObjStack slots.
+// `parentEid` is the PARENT container's eid (needed to resolve the parent's actor and inventory).
+// `recs` is the parent's records, each potentially carrying subRecords for a nested container.
+//
+// For each record with non-empty subRecords:
+//   1. Match the record's className + key + xform against live prop_container_C actors.
+//   2. Resolve the matched actor's inventory.
+//   3. Write sub-records to the nested container's own GObjStack slot (bypassing the neutered
+//      index that loadData would read). The neutered index means loadData skips the GObjStack
+//      lookup, so the nested container would be empty WITHOUT this step.
+//   4. Recurse: if the sub-records themselves carry nested sub-records, apply those too.
+//
+// Matching strategy: className (exact string) + key (exact string) + xform (float[10] bitwise).
+// This is O(N * M) where N = parent records with subRecords and M = live prop_container actors.
+// In real play both are single digits. The match is conservative: ALL three fields must agree.
+void ApplyNestedContents(uint32_t parentEid, const std::vector<SR::SaveRecord>& recs) {
+    for (const auto& r : recs) {
+        if (r.subRecords.empty()) continue;
+        if (!RecordIsNestedContainer(r)) continue;
+
+        // Find the live nested container actor matching this record.
+        void* nestedActor = nullptr;
+        std::vector<coop::element::Registry::ActorIdPair> pairs;
+        coop::element::Registry::Get().SnapshotActorsByType(
+            coop::element::ElementType::Prop, pairs);
+        void* base = ContainerClass();
+        if (!base) continue;
+
+        for (const auto& pr : pairs) {
+            if (!pr.actor || !R::IsLiveByIndex(pr.actor, pr.internalIdx)) continue;
+            if (!ue_wrap::prop::WalksToBase(R::ClassOf(pr.actor), base)) continue;
+            // Match className.
+            void* cls = R::ClassOf(pr.actor);
+            const std::wstring liveName = R::ClassNameOf(cls);
+            if (liveName != r.className) continue;
+            // Match key. The `key` field is an FName declared on Aprop_C. We resolve the offset
+            // from Aprop_C (the declaring class), NOT from the instance's derived class --
+            // R::FindPropertyOffset matches on OuterOf(fn) == owningClass EXACTLY and does NOT
+            // walk the superclass chain (reflection.cpp:427).
+            static int32_t sOffKey = -2;
+            if (sOffKey == -2) {
+                void* propCls = R::FindClass(L"prop_C");
+                if (propCls) sOffKey = R::FindPropertyOffset(propCls, L"key");
+                if (sOffKey < 0) {
+                    UE_LOGW("container_contents: could not resolve prop_C.key -- "
+                            "nested matching degraded to className only");
+                }
+            }
+            if (sOffKey >= 0) {
+                const std::wstring liveKey = SR::ReadFNameAt(pr.actor, sOffKey);
+                if (liveKey != r.key) continue;
+            }
+            // All matched.
+            nestedActor = pr.actor;
+            break;
+        }
+
+        if (!nestedActor) {
+            UE_LOGW("container_contents: nested container %ls/%ls (parent eid=%u) not found on "
+                    "receiver -- %zu sub-records dropped (nested container appears empty)",
+                    r.className.c_str(), r.key.c_str(), parentEid, r.subRecords.size());
+            continue;
+        }
+
+        void* nestedInv = InventoryOf(nestedActor);
+        if (!nestedInv || !IsWorldContainerInventory(nestedInv)) {
+            UE_LOGW("container_contents: nested container %ls/%ls (parent eid=%u) has no valid "
+                    "world inventory -- %zu sub-records dropped",
+                    r.className.c_str(), r.key.c_str(), parentEid, r.subRecords.size());
+            continue;
+        }
+
+        // Write sub-records to the nested container's own GObjStack slot.
+        const int32_t n = static_cast<int32_t>(r.subRecords.size());
+        void* buf = SR::AllocZeroed(static_cast<size_t>(n), static_cast<size_t>(SR::kSaveStride));
+        if (!buf && n > 0) {
+            UE_LOGW("container_contents: nested alloc failed for %ls/%ls (parent eid=%u)",
+                    r.className.c_str(), r.key.c_str(), parentEid);
+            continue;
+        }
+        uint8_t* slot = GObjStackSlot(nestedInv);
+        if (!slot) {
+            UE_LOGW("container_contents: nested GObjStack slot unresolvable for %ls/%ls "
+                    "(parent eid=%u)", r.className.c_str(), r.key.c_str(), parentEid);
+            continue;
+        }
+        for (int32_t i = 0; i < n; ++i)
+            SR::WriteSaveRecord(reinterpret_cast<uint8_t*>(buf) +
+                static_cast<size_t>(i) * SR::kSaveStride, r.subRecords[i]);
+        SR::WriteArrHeader(slot, 0, buf, n);
+        RederiveManagedState(OwnerOf(nestedInv), nestedInv);
+        UE_LOGI("container_contents: nested %ls/%ls (parent eid=%u) applied %d sub-records "
+                "to own GObjStack slot", r.className.c_str(), r.key.c_str(), parentEid, n);
+
+        // Recurse: if sub-records themselves carry nested contents, apply those too.
+        // Use the nested container's own eid for cycle tracking (though the depth cap in
+        // ReadContents already bounds the nesting).
+        void* nestedOwner = OwnerOf(nestedInv);
+        const uint32_t nestedEid = nestedOwner
+            ? static_cast<uint32_t>(
+                  coop::element::Registry::Get().EidForActor(nestedOwner))
+            : 0;
+        if (nestedEid != 0 && nestedEid !=
+                static_cast<uint32_t>(coop::element::kInvalidId)) {
+            ApplyNestedContents(nestedEid, r.subRecords);
+        }
+    }
+}
+
+// Increment 2: recursive apply. The wire format prefixes each record with a depth byte. A depth>0
+// record is a sub-record of the most recent record at depth-1 (the parent nested container). The
+// receiver reconstructs the tree via a depth stack, then recursively writes sub-records to each
+// nested container's own GObjStack slot.
+//
+// Resolving nested container actors: the receiver matches the nested record's className + key +
+// xform against live prop_container_C actors. This is O(N) per nested container but nested
+// containers are rare (single digits in real play). If no match is found, the sub-records are
+// dropped with a warning (the nested container appears empty -- same as increment 1).
 Ingest ParseAndApply(const std::vector<uint8_t>& blob, uint32_t& outEid, uint8_t senderSlot) {
     size_t o = 0;
     uint8_t op = 0;
@@ -638,20 +845,58 @@ Ingest ParseAndApply(const std::vector<uint8_t>& blob, uint32_t& outEid, uint8_t
         UE_LOGW("container_contents: eid=%u declares %u records -- rejected", outEid, n);
         return Ingest::Handled;
     }
-    std::vector<SR::SaveRecord> recs(n);
-    for (auto& r : recs) {
+
+    // Increment 2: parse with depth bytes. Build a flat list of (depth, record) pairs, then
+    // reconstruct the tree via a depth stack.
+    struct DepthRec { int depth; SR::SaveRecord rec; };
+    std::vector<DepthRec> flat;
+    flat.reserve(n);
+    for (uint16_t i = 0; i < n; ++i) {
+        uint8_t depth = 0;
+        if (!W::RdU8(blob, o, depth)) {
+            UE_LOGW("container_contents: eid=%u truncated depth byte at record %u", outEid, i);
+            return Ingest::Handled;
+        }
+        SR::SaveRecord r;
         if (!W::DeSave(blob, o, r)) {
             UE_LOGW("container_contents: eid=%u malformed record stream -- dropped", outEid);
             return Ingest::Handled;
         }
+        flat.push_back({depth, std::move(r)});
     }
-    const uint64_t contentHash = ContentHash(outEid, recs);
-    const Ingest outcome = ApplyContents(outEid, recs, contentHash);
+
+    // Reconstruct the tree via a depth stack. stack[d] = the record at depth d whose children
+    // we are currently collecting. When we see depth N, pop everything > N-1 (finished with
+    // those subtrees), then attach to stack[N-1].
+    std::vector<SR::SaveRecord*> stack;
+    std::vector<SR::SaveRecord> roots;  // top-level records (depth 0)
+    for (auto& fr : flat) {
+        const int d = fr.depth;
+        while (static_cast<int>(stack.size()) > d) stack.pop_back();
+        if (d == 0) {
+            roots.push_back(std::move(fr.rec));
+            stack.push_back(&roots.back());
+        } else if (d > 0 && !stack.empty()) {
+            stack.back()->subRecords.push_back(std::move(fr.rec));
+            stack.push_back(&stack.back()->subRecords.back());
+        } else {
+            UE_LOGW("container_contents: eid=%u depth %d with no parent -- dropped", outEid, d);
+        }
+    }
+
+    const uint64_t contentHash = ContentHash(outEid, roots);
+    const Ingest outcome = ApplyContents(outEid, roots, contentHash);
     // HOST, client-authored + ACCEPTED: this content is now the host's published truth. Recording
     // it here (not at the chunk seam) is what keeps the host's own drain from re-broadcasting the
     // identical slice back out to everyone -- which would reach the author the long way round and
     // stomp whatever it had done since.
     if (outcome == Ingest::Applied && IsHost() && senderSlot != 0) g_sentHash[outEid] = contentHash;
+
+    // Increment 2: recursively apply sub-records to nested containers' own GObjStack slots.
+    if (outcome == Ingest::Applied) {
+        ApplyNestedContents(outEid, roots);
+    }
+
     return outcome;
 }
 

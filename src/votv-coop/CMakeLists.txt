@@ -299,6 +299,7 @@ add_library(votv-coop SHARED
     src/coop/props/remote_prop.cpp
     src/coop/props/remote_prop_convert.cpp
     src/coop/props/remote_prop_destroy.cpp
+    src/coop/props/holder_table.cpp
     src/coop/props/remote_prop_physics.cpp
     src/coop/save/save_guard.cpp
     src/coop/world/balance_sync.cpp
@@ -338,6 +339,7 @@ add_library(votv-coop SHARED
     src/coop/interactables/power_sync.cpp
     src/coop/interactables/atv_sync.cpp
     src/coop/interactables/drone_sync.cpp
+    src/coop/interactables/drone_call_sync.cpp
     src/coop/items/order_sync.cpp
     src/coop/world/firefly_sync.cpp
     src/coop/world/spawn_authority.cpp
@@ -347,6 +349,7 @@ add_library(votv-coop SHARED
     src/coop/world/alarm_sync.cpp
     src/coop/interactables/serverbox_sync.cpp
     src/coop/interactables/window_sync.cpp
+    src/coop/interactables/dwindow_sync.cpp
     src/coop/interactables/grime_sync.cpp
     src/coop/session/player_handshake.cpp
     src/coop/session/player_handshake_prefs.cpp
@@ -481,6 +484,7 @@ add_library(votv-coop SHARED
     src/ue_wrap/actors/inventory.cpp
     src/ue_wrap/actors/save_record.cpp
     src/coop/world/email_sync.cpp
+    src/coop/world/seed_sync.cpp
     src/coop/net/blob_chunks.cpp
     src/coop/interactables/signal_wire.cpp
     src/coop/interactables/meadow_db_sync.cpp

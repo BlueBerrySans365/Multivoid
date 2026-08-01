@@ -18,6 +18,7 @@
 #include "coop/props/remote_prop_spawn.h"
 #include "coop/props/trash_channel.h"
 #include "coop/props/trash_clump_pose_stream.h"
+#include "coop/props/holder_table.h"  // A3 Half 2: shared holder-authority table
 #include "coop/props/trash_proxy.h"
 #include "ue_wrap/actors/prop.h"
 #include "ue_wrap/core/hot_path_guard.h"
@@ -55,6 +56,18 @@ void* OnConvert(const coop::net::PropConvertPayload& payload, void* localPlayer,
     // docs/piles/08: adopt the host's authoritative sync-time-context for E, and DROP a stale/out-of-order
     // convert (a duplicate, or one older than a transition we already applied). ctx==0 = legacy/non-trash.
     if (!coop::trash_channel::AdoptInboundConvertCtx(E, payload.ctx)) return nullptr;
+
+    // A3 Half 2 (2026-08-01): HOST-SIDE AUTHORITY CHECK. On the host, only the current
+    // holder of an entity (per holder_table) may convert it. This prevents a malicious
+    // client from converting any prop by wire-Key. Trash proxies are NOT in the holder
+    // table (they use a separate lifecycle), so skip the check for proxy converts.
+    if (senderSlot >= 0 && !coop::trash_proxy::IsProxy(E)) {
+        if (!coop::holder_table::IsHeldBy(E, static_cast<uint8_t>(senderSlot))) {
+            UE_LOGW("[PILE] CLIENT recv convert %s eid=%u -- DENIED slot=%u (sender does not hold this entity)",
+                    edge, E, senderSlot);
+            return nullptr;
+        }
+    }
     // docs/piles/09 (4th mirror-identity instance): a kToPile LAND carrying a save-time key means the host
     // self-seeded this eid at an in-window grab + stamped its PRE-GRAB position. Arm a pending save-time twin
     // so the bracket-independent quiescence sweep (SweepReconcileSaveTimeTwins) retires our stale native@old

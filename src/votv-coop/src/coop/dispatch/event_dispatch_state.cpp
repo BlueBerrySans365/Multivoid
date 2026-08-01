@@ -11,6 +11,7 @@
 #include "event_dispatch.h"  // co-located private header (src tree, not include/)
 
 #include "coop/interactables/atv_sync.h"
+#include "coop/interactables/drone_call_sync.h"
 #include "coop/player/sleep_sync.h"
 #include "coop/interactables/device_occupancy.h"
 #include "coop/world/email_sync.h"
@@ -199,6 +200,28 @@ bool HandleStateEvent(net::Session& session,
         coop::atv_sync::OnAtvDestroy(adp, 0);
         break;
     }
+    case net::ReliableKind::AtvExplode: {
+        // v136 (Phase 2): ONE-SHOT explosion VFX trigger when the ATV's health crosses zero.
+        // The authority sends this ONCE; mirrors spawn explosion_C VFX-only at the given location.
+        // Same Normal lane as AtvState (in-order: health->0 then the explosion edge).
+        if (msg.payloadLen < sizeof(net::AtvExplodePayload)) {
+            UE_LOGW("event_feed: AtvExplode payload too short (%zu < %zu)",
+                    static_cast<size_t>(msg.payloadLen), sizeof(net::AtvExplodePayload));
+            break;
+        }
+        net::AtvExplodePayload ep{};
+        std::memcpy(&ep, msg.payload, sizeof(ep));
+        if (!std::isfinite(ep.locX) || !std::isfinite(ep.locY) || !std::isfinite(ep.locZ)) {
+            UE_LOGW("event_feed: AtvExplode non-finite location -- dropping");
+            break;
+        }
+        const uint8_t senderSlot =
+            (msg.senderPeerSlot >= 0 && msg.senderPeerSlot < net::kMaxPeers)
+                ? static_cast<uint8_t>(msg.senderPeerSlot)
+                : static_cast<uint8_t>(0xFF);
+        coop::atv_sync::OnAtvExplode(ep, senderSlot);
+        break;
+    }
     case net::ReliableKind::DroneState: {
         // v48 (2026-06-08): delivery drone body pose (Adrone_C). HOST-AUTHORITATIVE singleton --
         // HOST->client only; trust-gated to slot 0 (like SkyState/TimeSync). The client
@@ -221,6 +244,17 @@ bool HandleStateEvent(net::Session& session,
             break;
         }
         coop::drone_sync::OnReliable(dp);
+        break;
+    }
+    case net::ReliableKind::DroneCallRequest: {
+        // T2-8: client pressed E on the droneConsole. HOST-only; no payload (singleton).
+        // Trust-gated: only clients (senderPeerSlot != 0) may send this.
+        if (msg.senderPeerSlot == 0) {
+            UE_LOGW("event_feed: DroneCallRequest from host -- dropping");
+            break;
+        }
+        coop::drone_call_sync::OnDroneCallRequest(
+            static_cast<uint8_t>(msg.senderPeerSlot));
         break;
     }
     // (OrderRequest: moved to the INTENT family, event_dispatch_intent.cpp, 2026-07-10.)

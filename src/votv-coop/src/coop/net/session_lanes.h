@@ -103,6 +103,7 @@ inline Lane LaneForKind(ReliableKind k) {
     case ReliableKind::AtvRelease:     return Lane::Normal;
     case ReliableKind::AtvSpawn:       return Lane::Normal;
     case ReliableKind::AtvDestroy:     return Lane::Normal;
+    case ReliableKind::AtvExplode:     return Lane::Normal;  // v136: Phase 2 explosion VFX edge, same lane as AtvState
     // v112: DeskInput + DeskScanEvent are ORDER-COUPLED with each other and
     // with the adopt DeskState (GNS orders within a lane; the design's
     // adopt-before-deltas + charge/scan ordering proofs assume one lane).
@@ -184,8 +185,10 @@ inline bool IsClientRelayableReliableKind(ReliableKind k) {
     switch (k) {
     case ReliableKind::ItemActivate:
     case ReliableKind::PropSpawn:
-    case ReliableKind::PropDestroy:
-    case ReliableKind::PropConvert:       // v52: a client's clump ball->pile convert must reach the other clients
+    // PropDestroy + PropConvert REMOVED from relay whitelist (2026-08-01, A3 Half 1):
+    // these are now relayed AFTER game-thread validation to prevent a forged
+    // destroy/convert from being fanned out to other clients before the host
+    // validates the sender's authority. See event_dispatch_entity.cpp.
     case ReliableKind::PropRelease:
     case ReliableKind::PropStickState:    // v68: a client's wall-attachable stick (camera on a wall) must reach the other clients
     case ReliableKind::DoorState:
@@ -197,6 +200,7 @@ inline bool IsClientRelayableReliableKind(ReliableKind k) {
     case ReliableKind::PowerControlState: // v46: base power panel breakers are SYMMETRIC -- relay a client's edge to the others
     case ReliableKind::AtvState:          // v47: ATV body pose is OCCUPANT-OR-GRABBER-authoritative -- relay a client driver's/grabber's pose to the other clients
     case ReliableKind::AtvRelease:        // v76: ATV grab-release/throw edge -- relay a client grabber's release to the other clients (companion to AtvState)
+    case ReliableKind::AtvExplode:        // v136: ATV explosion VFX edge -- relay a client authority's explosion to the other clients (companion to AtvState health->0)
     // DeskState is NOT relayable since v112 (RULE 2): it is ADOPT-ONLY, host->joiner
     // point-to-point; clients never send it. Live desk input rides DeskInput below.
     case ReliableKind::DeskInput:         // v112: claim-free field-granular desk input deltas are PRESSER-authored -- relay a client's delta to the others (the host excludes the originator by relay construction)

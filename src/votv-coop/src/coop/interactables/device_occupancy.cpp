@@ -487,6 +487,10 @@ uint8_t HolderOf(const wchar_t* key) {
     return it == g_busy.end() ? 0xFF : it->second;
 }
 
+bool IsClaimedBy(const wchar_t* key, uint8_t slot) {
+    return HolderOf(key) == slot;
+}
+
 void QueueConnectBroadcastForSlot(int peerSlot) {
     auto* s = g_session.load(std::memory_order_acquire);
     if (!s || s->role() != coop::net::Role::Host) return;

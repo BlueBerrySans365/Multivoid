@@ -334,17 +334,11 @@ void Update(net::Session& session, void* localPlayer) {
             break;
         }
         case net::ReliableKind::BalanceDelta: {
-            // v30 shared balance: a client requested a credit (the +1000 dev button) --
-            // the host applies it via AddPoints (its poll re-broadcasts the new total).
-            // Client->host; OnDeltaRequest no-ops unless we are the host.
-            if (msg.payloadLen < sizeof(net::BalancePayload)) {
-                UE_LOGW("event_feed: BalanceDelta payload too short (%zu < %zu)",
-                        static_cast<size_t>(msg.payloadLen), sizeof(net::BalancePayload));
-                break;
-            }
-            net::BalancePayload p{};
-            std::memcpy(&p, msg.payload, sizeof(p));
-            coop::balance_sync::OnDeltaRequest(p.value);
+            // A5 RETIRED (2026-08-01): the BalanceDelta lane is retired per RULE 2.
+            // The sole caller was the dev +1000 button (add_points.cpp), which is now
+            // host-only. Any client sending this is protocol-violating -> drop + warn.
+            UE_LOGW("event_feed: BalanceDelta RETIRED (A5) -- dropping (sole caller was "
+                    "the dev button, now host-only)");
             break;
         }
         case net::ReliableKind::TeleportClient: {

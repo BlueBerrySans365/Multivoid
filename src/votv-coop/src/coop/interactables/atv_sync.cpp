@@ -66,6 +66,11 @@ struct AtvEntry {
     bool     preparedAsMirror = false;   // we disabled this ATV's physics/tick to mirror it
     bool     wasAuthority    = false;    // we were the authority (driver OR grabber) last tick (release-edge detect)
     bool     isClientSpawnedMirror = false;  // v77: a purchased ATV WE fresh-spawned (AtvSpawn) -> K2 on destroy
+    // Phase 2 health tracking (authority-only): detect the explosion edge (health crosses zero)
+    // and the repair edge (health jumps upward on a parked ATV).
+    float    lastHealth      = 100.f;   // last-sent health value (authority tracks for edge detection)
+    bool     wasBroken       = false;   // last-sent broken state (authority tracks for explosion edge)
+    bool     sentExplode     = false;   // we already sent AtvExplode for this health-crossing (don't re-send)
 };
 
 std::atomic<coop::net::Session*> g_session{nullptr};
@@ -184,12 +189,16 @@ bool ReadPayload(void* actor, const std::wstring& key, uint8_t occupantSlot, boo
     WireKeyFromString(key, p.key);
     p.x = loc.X; p.y = loc.Y; p.z = loc.Z;
     p.pitch = rot.Pitch; p.yaw = rot.Yaw; p.roll = rot.Roll;
+    p.fuel   = A::GetFuel(actor);
+    p.health = A::GetHealth(actor);
     p.occupantSlot = occupantSlot;
     uint8_t sb = 0;
     if (A::IsDriven(actor)) sb |= 0x1;
     if (A::GetBrake(actor)) sb |= 0x2;
     if (grabbed)            sb |= 0x4;
     if (authored)           sb |= 0x8;
+    if (A::GetIsDrive(actor)) sb |= 0x10;   // bit4 = engineOn
+    if (A::GetBroken(actor))  sb |= 0x20;   // bit5 = broken
     p.stateBits = sb;
     p.adopt = adopt ? 1 : 0;
     return true;
@@ -384,6 +393,11 @@ void OnReliable(const coop::net::AtvStatePayload& payload, uint8_t /*senderPeerS
         if (e.preparedAsMirror) { A::ReleaseMirror(e.actor); e.preparedAsMirror = false; }
         A::DriveMirrorTransform(e.actor, FVector{ payload.x, payload.y, payload.z },
                                 FRotator{ payload.pitch, payload.yaw, payload.roll });
+        // Phase 2: apply fuel/health/engineOn/broken even on idle adopt (smoke + gauge correct)
+        A::DriveFuel(e.actor, payload.fuel);
+        A::DriveHealth(e.actor, payload.health);
+        A::SetEngineOn(e.actor, (payload.stateBits & 0x10) != 0);
+        A::SetBroken(e.actor, (payload.stateBits & 0x20) != 0);
         e.hasPose = false; e.window.Close(); e.dirty = false;
         return;
     }
@@ -391,6 +405,11 @@ void OnReliable(const coop::net::AtvStatePayload& payload, uint8_t /*senderPeerS
     // then open the interp.
     if (!e.preparedAsMirror) { A::PrepareMirror(e.actor); e.preparedAsMirror = true; }
     SetTarget(e, payload, /*snap*/ payload.adopt != 0);
+    // Phase 2: apply fuel/health/engineOn/broken on every stream packet
+    A::DriveFuel(e.actor, payload.fuel);
+    A::DriveHealth(e.actor, payload.health);
+    A::SetEngineOn(e.actor, (payload.stateBits & 0x10) != 0);
+    A::SetBroken(e.actor, (payload.stateBits & 0x20) != 0);
 }
 
 void OnAtvRelease(const coop::net::AtvReleasePayload& payload, uint8_t /*senderPeerSlot*/) {
@@ -467,6 +486,24 @@ void OnAtvDestroy(const coop::net::AtvDestroyPayload& payload, uint8_t /*senderP
     if (actor) g_synthForActor.erase(actor);
     g_atvs.erase(it);
     UE_LOGI("atv: destroyed purchased-ATV mirror synthKey='%ls'", synthKey.c_str());
+}
+
+void OnAtvExplode(const coop::net::AtvExplodePayload& payload, uint8_t /*senderPeerSlot*/) {
+    std::wstring key = StringFromWireKey(payload.key);
+    if (key.empty()) { UE_LOGW("atv: OnAtvExplode empty key -- dropping"); return; }
+    if (!std::isfinite(payload.locX) || !std::isfinite(payload.locY) || !std::isfinite(payload.locZ)) {
+        UE_LOGW("atv: OnAtvExplode non-finite location -- dropping key='%ls'", key.c_str());
+        return;
+    }
+    auto it = g_atvs.find(key);
+    if (it == g_atvs.end()) return;  // not indexed -- stale or pre-connect
+    AtvEntry& e = it->second;
+    if (!R::IsLiveByIndex(e.actor, e.idx)) return;
+    // If WE are the authority (we computed this explosion), we already saw it locally -- ignore.
+    if (IsLocalAuthority(e.actor, coop::players::Registry::Get().Local())) return;
+    const FVector loc{ payload.locX, payload.locY, payload.locZ };
+    A::SpawnExplosion(loc);  // VFX-only: does NOT call explode() (no re-impulse, no driver eject)
+    UE_LOGI("atv: OnAtvExplode key='%ls' loc=(%.0f, %.0f, %.0f)", key.c_str(), loc.X, loc.Y, loc.Z);
 }
 
 void QueueConnectBroadcastForSlot(int peerSlot) {
@@ -555,6 +592,24 @@ void Tick() {
                 const uint8_t occSlot = occupant ? localSlot : uint8_t{0xFF};  // grabber: no seated driver
                 if (ReadPayload(e.actor, kv.first, occSlot, /*adopt*/false, p, /*grabbed*/grabber))
                     s->SendReliable(coop::net::ReliableKind::AtvState, &p, sizeof(p));
+                // Phase 2: detect explosion edge (health crosses zero for the first time).
+                // Single crossing: once sentExplode is set, no re-send until reset by a full repair.
+                const float curHealth = A::GetHealth(e.actor);
+                const bool  curBroken = A::GetBroken(e.actor);
+                if (curHealth <= 0.f && !e.sentExplode) {
+                    FVector loc = engine::GetActorLocation(e.actor);  // best-effort spawn loc
+                    coop::net::AtvExplodePayload ep{};
+                    WireKeyFromString(kv.first, ep.key);
+                    ep.locX = loc.X; ep.locY = loc.Y; ep.locZ = loc.Z;
+                    s->SendReliable(coop::net::ReliableKind::AtvExplode, &ep, sizeof(ep));
+                    e.sentExplode = true;
+                    UE_LOGI("atv: explosion edge key='%ls' health=%.1f (AtvExplode sent)", kv.first.c_str(), curHealth);
+                }
+                // Reset the explosion latch on a full repair (health returns above 0 + broken clears)
+                // so a subsequent damage->0 can re-trigger the explosion.
+                if (curHealth > 0.f && !curBroken) e.sentExplode = false;
+                e.lastHealth = curHealth;
+                e.wasBroken  = curBroken;
             }
         } else if (e.hasPose) {
             // Mirror: drive the interp toward the last streamed pose (no-op when frozen at target).

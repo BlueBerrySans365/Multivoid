@@ -23,6 +23,7 @@
 #include "coop/player/players_registry.h"    // Puppet(slot) -- the client-grab direction (Increment 2)
 #include "coop/player/puppet_carry_drive.h"  // NotePuppetHeld -- host drives the puppet-held clump pose
 #include "coop/player/remote_player.h"       // RemotePlayer::GetActor / valid
+#include "coop/props/holder_table.h"         // A3 Half 2: shared holder-authority table
 #include "coop/props/prop_snapshot.h"  // ExpressIncrementalSpawn (wrong-class deny -> re-assert the row)
 #include "ue_wrap/core/call.h"        // ParamFrame / Call (the probe-proven puppet-grab pattern)
 #include "ue_wrap/engine/engine.h"      // grab-state read + physics/velocity drives
@@ -281,6 +282,7 @@ void OnGrabIntent(coop::net::Session& s, uint32_t eid, uint8_t senderSlot) {
     // (bumps ctx + broadcasts PropConvert{kToClump} to ALL incl. the requester) + register the per-tick hand
     // drive (the puppet's own tick won't position the clump -- the probe's verdict).
     g_heldBy[eid] = senderSlot;
+    coop::holder_table::SetHeldBy(static_cast<coop::element::ElementId>(eid), senderSlot);
     const ue_wrap::FVector  clumpLoc = ue_wrap::engine::GetActorLocation(clump);
     const ue_wrap::FRotator clumpRot = ue_wrap::engine::GetActorRotation(clump);
     const uint8_t chipType = ue_wrap::prop::GetChipType(clump);
@@ -358,6 +360,7 @@ void OnThrowIntent(coop::net::Session& s, uint32_t eid, uint8_t mode,
     }
     ue_wrap::engine::SetActorRootPhysicsVelocity(clump, lin, ue_wrap::FVector{0.f, 0.f, 0.f});  // apply AFTER SimulatePhysics(true)
     coop::puppet_carry_drive::NoteThrown(static_cast<coop::element::ElementId>(eid));  // stop hand-drive; stream the flight
+    coop::holder_table::ClearHeldBy(static_cast<coop::element::ElementId>(eid));  // A3 Half 2: throw releases the hold
     UE_LOGI("[THROW-INTENT] SUCCESS eid=%u slot=%u mode=%s clump=%p -- puppet released + physics thrown vel=(%.0f,%.0f,%.0f); "
             "clump flies + self-re-piles (thunk -> ToPile)", eid, senderSlot,
             mode == coop::net::throw_mode::kHardThrow ? "hardThrow(LMB)" : "release(E)", clump, lin.X, lin.Y, lin.Z);
@@ -372,12 +375,14 @@ void OnGrabHolderLeft(uint8_t senderSlot) {
             it = g_heldBy.erase(it);
         } else { ++it; }
     }
+    coop::holder_table::ClearSlot(senderSlot);
 }
 
 void ReleaseClientHold(coop::net::Session& s, coop::element::ElementId E) {
     const uint32_t eid = static_cast<uint32_t>(E);
     if (g_heldBy.erase(eid))
         UE_LOGI("[GRAB-INTENT] ReleaseClientHold eid=%u -- clump lost before land; hold cleared (re-grabbable)", eid);
+    coop::holder_table::ClearHeldBy(E);
     ForgetEid(E);   // drop a stranded carry latch/settle (idempotent if the land COMMIT already closed it)
     // Audit HIGH 2026-06-23: the trash entity vanished on the host (clump died with no re-pile). Broadcast
     // PropDestroy(eid) so EVERY client retires the now-frozen carry proxy + clears its g_clientCarry toggle
