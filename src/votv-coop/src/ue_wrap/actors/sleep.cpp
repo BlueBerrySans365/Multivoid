@@ -42,7 +42,7 @@ void* g_dreamBaseCls = nullptr;     // dreamBase_C (dream class validation)
 int32_t g_offPlayerSpawn = -1;      // dreamBase_C.playerSpawn @0x0238 (UBillboardComponent)
 void* g_teleportFn = nullptr;       // mainPlayer.teleportWObackrooms(FVector, bool, bool)
 void* g_isDreamFn = nullptr;        // daynightCycle.isDream(bool)
-void* g_dreamBlurOff = -1;          // playerInterface.dreamBlur (USceneComponent)
+int32_t g_offDreamBlur = -1;          // playerInterface.dreamBlur (USceneComponent)
 void* g_dayNightCycle = nullptr;    // daynightCycle singleton
 int32_t g_offPlayerInterface = -1;  // mainGamemode.playerInterface (UplayerInterface_C*)
 
@@ -431,11 +431,11 @@ bool GetDreamPlayerSpawn(void* dream, float& x, float& y, float& z) {
     if (!f.valid()) return false;
     if (!ue_wrap::Call(spawnComp, f)) return false;
     // Return value is FVector at ReturnValue
-    const uint8_t* ret = reinterpret_cast<const uint8_t*>(f.GetRaw(L"ReturnValue"));
-    if (!ret) return false;
-    x = *reinterpret_cast<const float*>(ret + 0);
-    y = *reinterpret_cast<const float*>(ret + 4);
-    z = *reinterpret_cast<const float*>(ret + 8);
+    ue_wrap::FVector retVec{};
+    if (!f.GetRaw(L"ReturnValue", &retVec, sizeof(ue_wrap::FVector))) return false;
+    x = retVec.x;
+    y = retVec.y;
+    z = retVec.z;
     return true;
 }
 

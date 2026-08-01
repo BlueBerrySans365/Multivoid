@@ -302,9 +302,12 @@ void Tick() {
                 if (SLP::GetDreamPlayerSpawn(dreamActor, dsx, dsy, dsz)) {
                     dp.spawnX = dsx; dp.spawnY = dsy; dp.spawnZ = dsz;
                 }
-                // Save host's pre-dream position
+                // Save host's pre-dream position (quaternion; payload carries euler for reference)
+                float pqx = 0, pqy = 0, pqz = 0, pqw = 1;
                 SLP::GetPlayerPreDream(dp.preDreamX, dp.preDreamY, dp.preDreamZ,
-                                       dp.preDreamPitch, dp.preDreamYaw, dp.preDreamRoll);
+                                       pqx, pqy, pqz, pqw);
+                // TODO: convert quaternion to euler for preDreamPitch/Yaw/Roll if needed
+                dp.preDreamPitch = 0; dp.preDreamYaw = 0; dp.preDreamRoll = 0;
                 s->SendReliable(coop::net::ReliableKind::DreamSpawn, &dp, sizeof(dp));
                 g_inDream = true;
                 UE_LOGI("sleep_sync: HOST entered dream -- DreamSpawn broadcast (class='%ls')",
