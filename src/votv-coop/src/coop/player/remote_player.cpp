@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <utility>
 
 namespace coop {
@@ -447,9 +448,10 @@ void RemotePlayer::Tick() {
         const uint64_t now = NowMs();
         if (now - lightLastReapplyMs_ >= kFlashlightReapplyMs) {
             lightLastReapplyMs_ = now;
-            if (void* mp = reinterpret_cast<uint8_t*>(actor_)) {
-                if (void* light_R = *reinterpret_cast<void**>(
-                        mp + P::off::AmainPlayer_light_R)) {
+            if (uint8_t* mp = reinterpret_cast<uint8_t*>(actor_)) {
+                void* light_R = nullptr;
+                std::memcpy(&light_R, mp + P::off::AmainPlayer_light_R, sizeof(void*));
+                if (light_R) {
                     if (R::IsLive(light_R)) {
                         E::SetSceneComponentVisibility(light_R, true, false);
                         E::SetLightIntensity(light_R, lightIntensity_);

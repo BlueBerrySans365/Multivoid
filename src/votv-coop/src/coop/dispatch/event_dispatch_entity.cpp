@@ -52,11 +52,19 @@ void RelayAfterValidation(net::Session& session,
     if (totalLen > net::kMaxPacketBytes) return;
     uint8_t buf[net::kMaxPacketBytes]{};
     auto* ph = reinterpret_cast<net::PacketHeader*>(buf);
-    ph->kind = static_cast<uint8_t>(msg.kind);
-    ph->senderPeerSlot = static_cast<uint8_t>(msg.senderPeerSlot);
+    ph->magic = net::kMagic;
+    ph->version = net::kProtocolVersion;
+    ph->type = static_cast<uint8_t>(net::MsgType::Reliable);
+    ph->seq = 0;
+    ph->senderEpoch = 0;
+    ph->senderSlot = static_cast<uint8_t>(msg.senderPeerSlot);
     auto* rh = reinterpret_cast<net::ReliableHeader*>(buf + sizeof(net::PacketHeader));
     rh->kind = static_cast<uint8_t>(msg.kind);
-    rh->_pad = 0;
+    rh->_pad[0] = 0;
+    rh->_pad[1] = 0;
+    rh->_pad[2] = 0;
+    rh->payloadLen = static_cast<uint16_t>(msg.payloadLen);
+    rh->_pad2 = 0;
     std::memcpy(buf + kHdrSize, msg.payload, msg.payloadLen);
     session.RelayReliableToOtherClients(msg.senderPeerSlot, msg.kind, buf, static_cast<int>(totalLen));
 }

@@ -273,7 +273,7 @@ static bool OnPileUseIntercept(void* self, void* /*params*/) {
                     ue_wrap::garage::IsGarage(aimedOther) ||
                     ue_wrap::grime::IsGrime(aimedOther) ||
                     ue_wrap::power_control::IsPowerControl(aimedOther) ||
-                    ue_wrap::turbine::IsTurbine(aimedOther) ||
+                    ue_wrap::windturbine::IsTurbine(aimedOther) ||
                     ue_wrap::prop::IsKeyedInteractable(aimedOther);
                 if (isKnownInteractable) {
                     return false;  // let the native use dispatch run (door/device/lightswitch handler will pick it up)

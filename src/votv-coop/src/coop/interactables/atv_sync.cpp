@@ -597,7 +597,7 @@ void Tick() {
                 const float curHealth = A::GetHealth(e.actor);
                 const bool  curBroken = A::GetBroken(e.actor);
                 if (curHealth <= 0.f && !e.sentExplode) {
-                    FVector loc = engine::GetActorLocation(e.actor);  // best-effort spawn loc
+                    FVector loc = ue_wrap::engine::GetActorLocation(e.actor);  // best-effort spawn loc
                     coop::net::AtvExplodePayload ep{};
                     WireKeyFromString(kv.first, ep.key);
                     ep.locX = loc.X; ep.locY = loc.Y; ep.locZ = loc.Z;

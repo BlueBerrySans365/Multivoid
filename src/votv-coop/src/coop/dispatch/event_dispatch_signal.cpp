@@ -35,7 +35,7 @@
 
 namespace coop::event_feed {
 
-bool HandleSignalEvent(net::Session& /*session*/,
+bool HandleSignalEvent(net::Session& session,
                        const net::Session::ReliableMessage& msg) {
     switch (msg.kind) {
     case net::ReliableKind::SkySignalState: {

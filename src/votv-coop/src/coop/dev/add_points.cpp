@@ -7,7 +7,16 @@
 #include "coop/net/session.h"
 #include "ue_wrap/core/log.h"
 
+#include <atomic>
+
 namespace coop::dev::add_points {
+namespace {
+std::atomic<coop::net::Session*> g_session{nullptr};
+}  // namespace
+
+void SetSession(coop::net::Session* session) {
+    g_session.store(session, std::memory_order_release);
+}
 
 void GivePoints(int amount) {
     // Strict client lockout: on a client this would send a BalanceDelta request
@@ -20,7 +29,7 @@ void GivePoints(int amount) {
     // A5 (2026-08-01): the BalanceDelta lane is retired (RULE 2). The dev button
     // now only works on the HOST (or solo). A client calling this is already gated
     // by dev_gate, but double-check: if we're connected as a client, refuse.
-    auto* s = coop::net::Session::Get();
+    auto* s = g_session.load(std::memory_order_acquire);
     if (s && s->connected() && s->role() == coop::net::Role::Client) {
         UE_LOGW("add_points: REFUSED -- BalanceDelta retired (A5); dev button is host-only");
         return;

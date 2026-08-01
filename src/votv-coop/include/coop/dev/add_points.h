@@ -10,7 +10,14 @@
 
 #pragma once
 
+namespace coop::net {
+class Session;
+}
+
 namespace coop::dev::add_points {
+
+// Wire the live session (harness StartCoopSession). Thread-safe.
+void SetSession(coop::net::Session* session);
 
 // Add `amount` credits to the local player's balance (game-thread-posted). No-op +
 // logged if the gamemode isn't live yet (booting / at the menu). Safe from the menu

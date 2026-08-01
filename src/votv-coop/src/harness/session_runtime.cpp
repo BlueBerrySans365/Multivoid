@@ -9,6 +9,7 @@
 #include "coop/comms/chat_feed.h"
 #include "coop/creatures/npc_sync.h"
 #include "coop/dev/dev_gate.h"
+#include "coop/dev/add_points.h"
 #include "coop/dev/force_weather.h"
 #include "coop/dev/object_overlay.h"
 #include "coop/dev/ragdoll_bone_overlay.h"
@@ -398,6 +399,7 @@ bool StartCoopSession(const coop::net::Config& netCfg) {
     coop::teleport_client::SetSession(&g_session);
     coop::dev::force_weather::SetSession(&g_session);
     coop::dev_gate::SetSession(&g_session);  // the strict CLIENT lockout for every dev feature
+    coop::dev::add_points::SetSession(&g_session);
     coop::moderation::SetSession(&g_session);
     // v73 Inc4: the per-player inventory subsystem MUST install PRE-WORLD (here, with the other
     // SetSession caches) -- NOT via the world-gated subsystems::Install. Both halves run before the
