@@ -39,6 +39,7 @@ struct AtvReleasePayload;
 struct AtvSpawnPayload;
 struct AtvDestroyPayload;
 struct AtvExplodePayload;
+struct AtvOccupiedPayload;
 }  // namespace coop::net
 
 namespace coop::atv_sync {
@@ -74,6 +75,10 @@ void OnAtvDestroy(const coop::net::AtvDestroyPayload& payload, uint8_t senderPee
 // this ONE-SHOT VFX trigger. Mirrors spawn explosion_C VFX-only at the given location (NOT calling
 // explode() which re-impulses + ejects). From event_feed.
 void OnAtvExplode(const coop::net::AtvExplodePayload& payload, uint8_t senderPeerSlot);
+
+// Receiver entry (CLIENT-only): an AtvOccupied arrived (v138). The host rejected our attempt to
+// sit in an occupied ATV. Shows a toast "ATV occupied by [name]". From event_feed.
+void OnAtvOccupied(const coop::net::AtvOccupiedPayload& payload, uint8_t senderPeerSlot);
 
 // HOST-only: snapshot the current pose of every indexed ATV to a freshly connected client
 // `peerSlot` (adopt=1 -> the joiner snaps to it). Net-pump connect edge. Game thread.

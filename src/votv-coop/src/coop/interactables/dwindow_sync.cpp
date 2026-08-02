@@ -25,7 +25,9 @@
 #include "ue_wrap/core/settled_object_scan.h"
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
+#include <vector>
 
 namespace coop::dwindow_sync {
 namespace {
@@ -38,6 +40,17 @@ std::atomic<coop::net::Session*> g_session{nullptr};
 std::atomic<bool> g_resolved{false};
 void*   g_dwinCls  = nullptr;  // d_window_C UClass
 int32_t g_cvOff    = -1;       // Ad_window_C::cv@0x0288 (bool -- canvas valid flag)
+
+// Cached d_window_C actor pointers (resolved once, re-validated by index).
+// Avoids the expensive full GUObjectArray scan every tick.
+struct CachedDWindow {
+    void* actor = nullptr;
+    int32_t idx = -1;
+};
+std::vector<CachedDWindow> g_cachedWindows;
+bool g_cachePrimed = false;
+uint64_t g_lastCacheScanMs = 0;
+constexpr uint64_t kCacheRescanIntervalMs = 5000;  // re-scan every 5s for streaming in/out
 
 // Documented Alpha 0.9.0-n fallback (CXXHeaderDump/d_window.hpp).
 constexpr int32_t kCvOffFallback = 0x0288;
@@ -71,6 +84,7 @@ bool IsDWindow(void* obj) {
 
 // Suppress client dirty(): clear the cv flag so the Canvas draw operations are no-ops.
 // Host is left alone (its native dirty() runs normally, painting into the RT).
+// Uses cached actor pointers for steady-state (re-scans every 5s for streaming).
 void SuppressClientDirty() {
     if (!g_resolved.load(std::memory_order_acquire)) return;
     if (g_cvOff < 0) return;
@@ -78,28 +92,42 @@ void SuppressClientDirty() {
     auto* s = g_session.load(std::memory_order_acquire);
     if (!s || s->role() == coop::net::Role::Host) return;  // host-only: no-op
 
-    static ue_wrap::scan::SettledObjectScan sScan{/*settleScans*/ 2, /*backstopFullEvery*/ 30};
-    const auto r = sScan.Begin();
+    const uint64_t nowMs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count());
+
+    // Re-scan periodically (5s) to catch streaming in/out of d_window actors.
+    if (!g_cachePrimed || nowMs - g_lastCacheScanMs >= kCacheRescanIntervalMs) {
+        g_lastCacheScanMs = nowMs;
+        g_cachedWindows.clear();
+        static ue_wrap::scan::SettledObjectScan sScan{/*settleScans*/ 2, /*backstopFullEvery*/ 30};
+        const auto r = sScan.Begin();
+        size_t found = 0;
+        for (int32_t i = r.begin; i < r.end; ++i) {
+            void* obj = R::ObjectAt(i);
+            if (!obj) continue;
+            if (!IsDWindow(obj)) continue;
+            if (R::NameStartsWith(R::NameOf(obj), L"Default__")) continue;  // skip CDO
+            if (!R::IsLive(obj)) continue;
+            ++found;
+            g_cachedWindows.push_back({obj, R::InternalIndexOf(obj)});
+        }
+        sScan.End(found);
+        g_cachePrimed = true;
+    }
+
+    // Suppress on cached actors (re-validate index before use).
     int suppressed = 0;
-    size_t found = 0;
-    for (int32_t i = r.begin; i < r.end; ++i) {
-        void* obj = R::ObjectAt(i);
-        if (!obj) continue;
-        if (!IsDWindow(obj)) continue;
-        if (R::NameStartsWith(R::NameOf(obj), L"Default__")) continue;  // skip CDO
-        if (!R::IsLive(obj)) continue;
-        ++found;
-        // Read current cv value -- only log on transition (was true, now clearing).
-        bool* cvPtr = reinterpret_cast<bool*>(reinterpret_cast<char*>(obj) + g_cvOff);
+    for (auto& w : g_cachedWindows) {
+        if (!R::IsLiveByIndex(w.actor, w.idx)) continue;
+        bool* cvPtr = reinterpret_cast<bool*>(reinterpret_cast<char*>(w.actor) + g_cvOff);
         if (*cvPtr) {
             *cvPtr = false;
             ++suppressed;
         }
     }
-    sScan.End(found);
     if (suppressed > 0)
         UE_LOGI("dwindow: suppressed dirty() on %d/%zu panoramic window(s) (client-side)",
-                suppressed, found);
+                suppressed, g_cachedWindows.size());
 }
 
 }  // namespace
@@ -115,7 +143,10 @@ void Tick() {
 }
 
 void OnDisconnect() {
-    // Stateless module -- nothing to clear.
+    // Stateless module -- clear cached actors for the next session.
+    g_cachedWindows.clear();
+    g_cachePrimed = false;
+    g_lastCacheScanMs = 0;
 }
 
 }  // namespace coop::dwindow_sync

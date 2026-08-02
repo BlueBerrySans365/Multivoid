@@ -102,4 +102,9 @@ void ClearContainer(void* drone);
 // Prevents compileOrder/sell from writing through GObjStack[0] (personal inventory). Game thread.
 void EnsureDroneContainer(void* drone);
 
+// Validate the current drone container and log detailed state. Clears the pointer if invalid
+// (dead, personal inventory, or empty Key). Returns true iff the container is valid.
+// Debug / diagnostic use (ini drone_validate_container=1). Game thread.
+bool ValidateDroneContainer(void* drone);
+
 }  // namespace ue_wrap::drone

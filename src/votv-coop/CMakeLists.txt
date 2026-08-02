@@ -44,6 +44,21 @@ configure_file(
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Steam integration (optional). When ENABLE_STEAM is ON, the build links
+# against steam_api64.lib and compiles the coop/steam/ modules. When OFF
+# (the default), all Steam functions are no-ops. Requires the Steamworks SDK
+# to be installed (set STEAMWORKS_SDK to the SDK root).
+option(ENABLE_STEAM "Enable Steam lobby/invite/friends integration" OFF)
+if(ENABLE_STEAM)
+    if(NOT STEAMWORKS_SDK)
+        message(FATAL_ERROR "ENABLE_STEAM requires STEAMWORKS_SDK to be set to the Steamworks SDK root")
+    endif()
+    add_compile_definitions(ENABLE_STEAM)
+    message(STATUS "Steam integration: ENABLED (SDK: ${STEAMWORKS_SDK})")
+else()
+    message(STATUS "Steam integration: DISABLED (set -DENABLE_STEAM=ON to enable)")
+endif()
+
 # MinHook (WP13: established inline-hook library, MIT). We compile its C
 # sources into our own static target rather than add_subdirectory(), so it picks
 # up the SAME static-CRT runtime as the mod (a runtime mismatch would break the
@@ -620,6 +635,19 @@ add_library(votv-coop SHARED
     src/harness/screenshot.cpp
     src/harness/sdk_check.cpp
 )
+
+# Steam integration sources (only compiled when ENABLE_STEAM is ON).
+if(ENABLE_STEAM)
+    target_sources(votv-coop PRIVATE
+        src/coop/steam/steam_lobby.cpp
+        src/coop/steam/steam_invite.cpp
+        src/coop/steam/steam_friends.cpp
+        src/coop/steam/steam_invite_panel.cpp
+    )
+    target_include_directories(votv-coop PRIVATE ${STEAMWORKS_SDK}/public)
+    target_link_directories(votv-coop PRIVATE ${STEAMWORKS_SDK}/redistributable_bin/win64)
+    target_link_libraries(votv-coop PRIVATE steam_api64)
+endif()
 
 target_include_directories(votv-coop PRIVATE include ${CMAKE_CURRENT_BINARY_DIR}/generated)
 # Paper-style versioned artifact name (user 2026-07-19): the payload file IS

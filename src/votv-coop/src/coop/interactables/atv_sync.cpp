@@ -75,6 +75,9 @@ struct AtvEntry {
     float    lastHealth      = 100.f;   // last-sent health value (authority tracks for edge detection)
     bool     wasBroken       = false;   // last-sent broken state (authority tracks for explosion edge)
     bool     sentExplode     = false;   // we already sent AtvExplode for this health-crossing (don't re-send)
+    // Single-driver enforcement (v138): track the current authority's peer slot so we can reject
+    // a second player trying to sit in the same ATV.
+    uint8_t  currentDriverSlot = 0xFF;  // 0xFF = no driver; otherwise the peer slot of the current driver
 };
 
 std::atomic<coop::net::Session*> g_session{nullptr};
@@ -370,7 +373,7 @@ void Install(coop::net::Session* session) {
     }
 }
 
-void OnReliable(const coop::net::AtvStatePayload& payload, uint8_t /*senderPeerSlot*/) {
+void OnReliable(const coop::net::AtvStatePayload& payload, uint8_t senderPeerSlot) {
     std::wstring key = StringFromWireKey(payload.key);
     if (key.empty()) { UE_LOGW("atv: OnReliable empty key -- dropping"); return; }
     if (!A::EnsureResolved()) return;
@@ -384,6 +387,25 @@ void OnReliable(const coop::net::AtvStatePayload& payload, uint8_t /*senderPeerS
     if (it == g_atvs.end()) return;  // not indexed yet -- the throttled rebuild will pick it up
     AtvEntry& e = it->second;
     if (!R::IsLiveByIndex(e.actor, e.idx)) return;
+    // SINGLE-DRIVER ENFORCEMENT (v138): if WE are the host and the AUTHORITY of this ATV,
+    // and a CLIENT sends a stream claiming to be the occupant, reject it. The host is the
+    // single authority; a second player trying to sit gets AtvOccupied.
+    auto* s = g_session.load(std::memory_order_acquire);
+    const bool isHost = s && s->role() == coop::net::Role::Host;
+    if (isHost && IsLocalAuthority(e.actor, coop::players::Registry::Get().Local())) {
+        const bool senderIsOccupant = (payload.stateBits & 0x1) != 0;  // bit0 = isDriven
+        if (senderIsOccupant && payload.occupantSlot != 0xFF &&
+            payload.occupantSlot != coop::players::Registry::Get().LocalPeerId()) {
+            // A client is trying to drive an ATV we already drive -- send rejection.
+            coop::net::AtvOccupiedPayload op{};
+            WireKeyFromString(key, op.key);
+            op.driverSlot = coop::players::Registry::Get().LocalPeerId();
+            s->SendReliableToSlot(senderPeerSlot, coop::net::ReliableKind::AtvOccupied, &op, sizeof(op));
+            UE_LOGI("atv: single-driver REJECT key='%ls' -- slot %d tried to sit but slot %d is driving",
+                    key.c_str(), payload.occupantSlot, op.driverSlot);
+            return;  // ignore the stream
+        }
+    }
     // If WE are the AUTHORITY of this ATV (driving OR grav-hand grabbing it), ignore the incoming
     // pose so a relayed/echoed copy can't fight our live driving/carrying.
     if (IsLocalAuthority(e.actor, coop::players::Registry::Get().Local())) return;
@@ -508,6 +530,24 @@ void OnAtvExplode(const coop::net::AtvExplodePayload& payload, uint8_t /*senderP
     const FVector loc{ payload.locX, payload.locY, payload.locZ };
     A::SpawnExplosion(loc);  // VFX-only: does NOT call explode() (no re-impulse, no driver eject)
     UE_LOGI("atv: OnAtvExplode key='%ls' loc=(%.0f, %.0f, %.0f)", key.c_str(), loc.X, loc.Y, loc.Z);
+}
+
+void OnAtvOccupied(const coop::net::AtvOccupiedPayload& payload, uint8_t /*senderPeerSlot*/) {
+    // CLIENT-only: the host sent this because WE tried to sit in an occupied ATV.
+    // Show a toast "ATV occupied by [name]" using the roster registry.
+    auto* s = g_session.load(std::memory_order_acquire);
+    if (!s || s->role() == coop::net::Role::Host) return;
+    std::wstring key = StringFromWireKey(payload.key);
+    if (key.empty()) return;
+    // Resolve the driver's name from the roster.
+    std::wstring driverName = L"another player";
+    if (payload.driverSlot < coop::net::kMaxPeers) {
+        auto nameOpt = coop::players::Registry::Get().NameForSlot(payload.driverSlot);
+        if (nameOpt && !nameOpt->empty()) driverName = *nameOpt;
+    }
+    UE_LOGI("atv: OnAtvOccupied key='%ls' driverSlot=%d driver='%ls' -- showing toast",
+            key.c_str(), payload.driverSlot, driverName.c_str());
+    // TODO: show in-game toast "ATV occupied by [driverName]" (requires UI integration)
 }
 
 void QueueConnectBroadcastForSlot(int peerSlot) {

@@ -93,6 +93,8 @@ bool EnsureContainerOffsets() {
 // True iff `containerActor` is a world (non-personal) drone cargo container we may open/sell through.
 // GObjStack[0] + Player==true is the local player's personal inventory -- pointing the drone at
 // that container shows/sells EVERYTHING in personal storage (the reported bug).
+// Also rejects: empty/null propInventory, uninitialised Index (<=0), and containers whose own
+// Key is empty/unset (the drone BP's BeginPlay may spawn a duplicate with Index==0 and no Key).
 bool IsValidDroneCargoContainer(void* containerActor) {
     if (!containerActor || !R::IsLive(containerActor) || !EnsureContainerOffsets()) return false;
     void* inv = *reinterpret_cast<void**>(
@@ -104,6 +106,11 @@ bool IsValidDroneCargoContainer(void* containerActor) {
         reinterpret_cast<char*>(inv) + g_invPlayerOff) != 0;
     if (isPlayer || idx <= 0)
         return false;  // reject personal inventory (Index==0, Player==true) and uninit (-1)
+    // Reject containers whose own Key is empty -- world-placed save containers always have
+    // a Key (e.g. "drone_InventoryContainer"); the drone BP's duplicate has no Key.
+    const std::wstring key = ue_wrap::prop::GetInteractableKeyString(containerActor);
+    if (key.empty() || key == L"None")
+        return false;
     return true;
 }
 
@@ -396,6 +403,15 @@ void RepointContainer(void* drone) {
         UE_LOGW("drone: RepointContainer -- no valid drone cargo container found");
         return;
     }
+    // DEFENSIVE: even though FindDroneCargoContainer filters through
+    // IsValidDroneCargoContainer, validate again before writing -- if this somehow
+    // still points at personal inventory, we must NOT write it (the sell-all-items bug).
+    if (!IsValidDroneCargoContainer(c)) {
+        UE_LOGW("drone: RepointContainer -- FindDroneCargoContainer returned INVALID container %p "
+                "key='%ls' -- refusing to write (sell-all-items bug prevented)",
+                c, ue_wrap::prop::GetInteractableKeyString(c).c_str());
+        return;
+    }
     if (*slot != c) {
         *slot = c;
         UE_LOGI("drone: repointed container @0x%04X -> %p key='%ls'",
@@ -414,6 +430,30 @@ void EnsureDroneContainer(void* drone) {
                 *slot, c, ue_wrap::prop::GetInteractableKeyString(c).c_str());
         *slot = c;
     }
+}
+
+bool ValidateDroneContainer(void* drone) {
+    if (!drone || !EnsureFxResolved() || g_containerOff < 0) return false;
+    void** slot = reinterpret_cast<void**>(reinterpret_cast<char*>(drone) + g_containerOff);
+    void* cur = *slot;
+    if (!cur) {
+        UE_LOGI("drone: ValidateDroneContainer -- container is NULL (no cargo assigned)");
+        return false;
+    }
+    if (!R::IsLive(cur)) {
+        UE_LOGW("drone: ValidateDroneContainer -- container %p is DEAD (stale pointer)", cur);
+        *slot = nullptr;
+        return false;
+    }
+    if (!IsValidDroneCargoContainer(cur)) {
+        UE_LOGW("drone: ValidateDroneContainer -- container %p INVALID "
+                "(personal inventory or empty Key, clearing)", cur);
+        *slot = nullptr;
+        return false;
+    }
+    UE_LOGI("drone: ValidateDroneContainer -- OK %p key='%ls'",
+            cur, ue_wrap::prop::GetInteractableKeyString(cur).c_str());
+    return true;
 }
 
 }  // namespace ue_wrap::drone

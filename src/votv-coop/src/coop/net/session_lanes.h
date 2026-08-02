@@ -106,6 +106,7 @@ inline Lane LaneForKind(ReliableKind k) {
     case ReliableKind::AtvExplode:     return Lane::Normal;  // v136: Phase 2 explosion VFX edge, same lane as AtvState
     case ReliableKind::DreamSpawn:     return Lane::Normal;  // v137: dream spawn announcement, same lane as SleepState
     case ReliableKind::DreamEnd:       return Lane::Normal;  // v137: dream end announcement, same lane as SleepState
+    case ReliableKind::AtvOccupied:    return Lane::Normal;  // v138: ATV single-driver rejection toast, same lane as AtvState
     // v112: DeskInput + DeskScanEvent are ORDER-COUPLED with each other and
     // with the adopt DeskState (GNS orders within a lane; the design's
     // adopt-before-deltas + charge/scan ordering proofs assume one lane).

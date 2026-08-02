@@ -445,6 +445,24 @@ bool HandleStateEvent(net::Session& session,
         coop::sleep_sync::OnDreamEnd(dep, 0);
         break;
     }
+    case net::ReliableKind::AtvOccupied: {
+        // v138: HOST->CLIENT rejection when a second player tries to sit in an occupied ATV.
+        // Client-only: the host sends this with the ATV key + the driver's slot.
+        if (msg.senderPeerSlot != 0) {
+            UE_LOGW("event_feed: AtvOccupied from non-host senderPeerSlot=%d -- dropping",
+                    msg.senderPeerSlot);
+            break;
+        }
+        if (msg.payloadLen < sizeof(net::AtvOccupiedPayload)) {
+            UE_LOGW("event_feed: AtvOccupied payload too short (%zu < %zu)",
+                    static_cast<size_t>(msg.payloadLen), sizeof(net::AtvOccupiedPayload));
+            break;
+        }
+        net::AtvOccupiedPayload op{};
+        std::memcpy(&op, msg.payload, sizeof(op));
+        coop::atv_sync::OnAtvOccupied(op, 0);
+        break;
+    }
     case net::ReliableKind::EmailAppend: {
         // HOST-AUTHORED since e5718fc6 (email_sync gates the append send on
         // role()==Host; clients author zero). Assembly + echo-proof shadow

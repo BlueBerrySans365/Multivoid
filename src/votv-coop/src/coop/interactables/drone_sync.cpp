@@ -8,6 +8,7 @@
 
 #include "coop/interactables/drone_sync.h"
 
+#include "coop/config/config.h"
 #include "coop/element/lerp_window.h"
 #include "coop/net/protocol.h"
 #include "coop/net/session.h"
@@ -164,9 +165,16 @@ void OnReliable(const coop::net::DroneStatePayload& payload) {
     D::WriteGateFields(drone, canTakeOff, hasSack);
     if (hasSack) {
         D::RepointContainer(drone);  // cargo aboard -> point at the prop-mirrored cargo container.
-                                     // EVERY hasSack packet: container may stream in late or be
-                                     // destroyed+respawned. RepointContainer re-validates even when
-                                     // the field is already live (wrong ptr = personal inventory bug).
+                                      // EVERY hasSack packet: container may stream in late or be
+                                      // destroyed+respawned. RepointContainer re-validates even when
+                                      // the field is already live (wrong ptr = personal inventory bug).
+        // TRANSITION GUARD: after repointing, verify the container is actually valid.
+        // If it points at personal inventory (Index==0, Player==true) or an empty-Key container,
+        // force-clear it so compileOrder/sell can't write through the wrong pointer.
+        if (!D::ValidateDroneContainer(drone)) {
+            UE_LOGW("drone: hasSack=true but container INVALID after repoint -- cleared "
+                    "(cargo operations will not open inventory)");
+        }
     } else if (ob & D::kFxHasSack) {
         D::ClearContainer(drone);    // cargo gone (departing edge) -> drop stale container pointer.
     }
@@ -245,6 +253,13 @@ void Tick() {
         // interp toward the last streamed pose (no-op when frozen at target between packets).
         if (!g_m.suppressed) { D::SuppressTick(drone); g_m.suppressed = true; }
         if (g_m.hasPose) { AdvanceInterp(g_m); ApplyMirror(drone, g_m); }
+        // Debug: ini drone_validate_container=1 -> per-tick container validation on the client
+        // when the drone has cargo (hasSack bit set in the last applied state).
+        static const bool s_validateEnabled = coop::config::ResolveFlag(
+            ::coop::config_registry::rows::drone_validate_container);
+        if (s_validateEnabled && (g_m.lastStateBits & D::kFxHasSack)) {
+            D::ValidateDroneContainer(drone);
+        }
     }
 }
 

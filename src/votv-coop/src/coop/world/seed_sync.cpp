@@ -16,6 +16,7 @@
 #include "ue_wrap/core/reflection.h"
 #include "ue_wrap/core/settled_object_scan.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cstdint>
 #include <cstring>
@@ -35,11 +36,17 @@ std::atomic<coop::net::Session*> g_session{nullptr};
 void* g_gpsCls = nullptr;
 int32_t g_gpsSeedOff = -1;  // offset of the FRandomStream field (name resolved at runtime)
 bool g_gpsResolved = false;
+bool g_gpsFailed = false;           // class permanently failed to resolve (don't retry every frame)
+uint64_t g_gpsNextRetryMs = 0;      // exponential backoff: next time to retry resolution
+int g_gpsRetryCount = 0;            // how many retries so far (for backoff exponent)
 
 // Axmaslight_C -- FRandomStream Seed @ 0x02A8 (from CXXHeaderDump/xmaslight.hpp).
 void* g_xmasCls = nullptr;
 int32_t g_xmasSeedOff = -1;
 bool g_xmasResolved = false;
+bool g_xmasFailed = false;
+uint64_t g_xmasNextRetryMs = 0;
+int g_xmasRetryCount = 0;
 
 // Per-xmaslight tracking: the LAST seed we read from each instance (by GUObjectArray index).
 // Used to detect changes and avoid redundant sends.
@@ -48,6 +55,13 @@ struct XmasSnapshot {
     bool valid = false;
 };
 std::map<size_t, XmasSnapshot> g_xmasSnapshots;
+
+// Cached actor pointers (resolved once via SettledObjectScan, reused for seed reads).
+// Avoids the expensive full GUObjectArray walk every 5 seconds after initial resolution.
+void* g_gpsActor = nullptr;       // cached garbagePileSpawner singleton actor
+bool  g_gpsActorResolved = false;  // true once we've found and cached the singleton
+std::vector<void*> g_xmasActors;  // cached xmaslight actor pointers
+bool  g_xmasActorsResolved = false;
 
 // ---- helpers ----
 
@@ -107,6 +121,13 @@ struct SeedEntry {
 
 void ReadGarbagePileSpawnerSeed(std::vector<SeedEntry>& out) {
     if (!g_gpsCls) return;
+    // Use cached actor pointer if available (avoids full SettledObjectScan every 5 seconds).
+    if (g_gpsActorResolved && g_gpsActor && R::IsLive(g_gpsActor)) {
+        int32_t seed = ReadSeed(g_gpsActor, g_gpsSeedOff);
+        out.push_back({0, 0, seed});
+        return;
+    }
+    // First resolution: scan once and cache.
     static ue_wrap::scan::SettledObjectScan sScan{/*settleScans*/ 2, /*backstopFullEvery*/ 60};
     const auto r = sScan.Begin();
     size_t found = 0;
@@ -117,6 +138,8 @@ void ReadGarbagePileSpawnerSeed(std::vector<SeedEntry>& out) {
         if (R::NameStartsWith(R::NameOf(obj), L"Default__")) continue;
         if (!R::IsLive(obj)) continue;
         ++found;
+        g_gpsActor = obj;
+        g_gpsActorResolved = true;
         int32_t seed = ReadSeed(obj, g_gpsSeedOff);
         out.push_back({0, 0, seed});
         break;  // singleton -- one instance max
@@ -126,6 +149,18 @@ void ReadGarbagePileSpawnerSeed(std::vector<SeedEntry>& out) {
 
 void ReadXmaslightSeeds(std::vector<SeedEntry>& out) {
     if (!g_xmasCls) return;
+    // Use cached actor pointers if available (avoids full SettledObjectScan every 5 seconds).
+    if (g_xmasActorsResolved && !g_xmasActors.empty()) {
+        uint32_t ordinal = 0;
+        for (void* obj : g_xmasActors) {
+            if (!obj || !R::IsLive(obj)) continue;
+            int32_t seed = ReadSeed(obj, g_xmasSeedOff);
+            out.push_back({1, ordinal, seed});
+            ++ordinal;
+        }
+        return;
+    }
+    // First resolution: scan once and cache all instances.
     static ue_wrap::scan::SettledObjectScan sScan{/*settleScans*/ 2, /*backstopFullEvery*/ 60};
     const auto r = sScan.Begin();
     size_t found = 0;
@@ -137,10 +172,12 @@ void ReadXmaslightSeeds(std::vector<SeedEntry>& out) {
         if (R::NameStartsWith(R::NameOf(obj), L"Default__")) continue;
         if (!R::IsLive(obj)) continue;
         ++found;
+        g_xmasActors.push_back(obj);
         int32_t seed = ReadSeed(obj, g_xmasSeedOff);
         out.push_back({1, ordinal, seed});
         ++ordinal;
     }
+    g_xmasActorsResolved = true;
     sScan.End(found);
 }
 
@@ -164,6 +201,13 @@ void PackSeed(std::vector<uint8_t>& blob, const SeedEntry& e) {
 
 void ApplyGarbagePileSpawnerSeed(int32_t seed) {
     if (!g_gpsCls || g_gpsSeedOff < 0) return;
+    // Use cached actor pointer if available.
+    if (g_gpsActorResolved && g_gpsActor && R::IsLive(g_gpsActor)) {
+        WriteSeed(g_gpsActor, g_gpsSeedOff, seed);
+        UE_LOGI("seed_sync: applied garbagePileSpawner seed=%d (cached actor)", seed);
+        return;
+    }
+    // First resolution: scan once and cache.
     static ue_wrap::scan::SettledObjectScan sScan{/*settleScans*/ 2, /*backstopFullEvery*/ 60};
     const auto r = sScan.Begin();
     size_t found = 0;
@@ -174,6 +218,8 @@ void ApplyGarbagePileSpawnerSeed(int32_t seed) {
         if (R::NameStartsWith(R::NameOf(obj), L"Default__")) continue;
         if (!R::IsLive(obj)) continue;
         ++found;
+        g_gpsActor = obj;
+        g_gpsActorResolved = true;
         WriteSeed(obj, g_gpsSeedOff, seed);
         UE_LOGI("seed_sync: applied garbagePileSpawner seed=%d", seed);
         break;  // singleton
@@ -183,6 +229,16 @@ void ApplyGarbagePileSpawnerSeed(int32_t seed) {
 
 void ApplyXmaslightSeed(uint32_t ordinal, int32_t seed) {
     if (!g_xmasCls || g_xmasSeedOff < 0) return;
+    // Use cached actor pointers if available.
+    if (g_xmasActorsResolved && ordinal < g_xmasActors.size()) {
+        void* obj = g_xmasActors[ordinal];
+        if (obj && R::IsLive(obj)) {
+            WriteSeed(obj, g_xmasSeedOff, seed);
+            UE_LOGI("seed_sync: applied xmaslight[%u] seed=%d (cached actor)", ordinal, seed);
+            return;
+        }
+    }
+    // First resolution: scan once and cache.
     static ue_wrap::scan::SettledObjectScan sScan{/*settleScans*/ 2, /*backstopFullEvery*/ 60};
     const auto r = sScan.Begin();
     size_t found = 0;
@@ -194,13 +250,16 @@ void ApplyXmaslightSeed(uint32_t ordinal, int32_t seed) {
         if (R::NameStartsWith(R::NameOf(obj), L"Default__")) continue;
         if (!R::IsLive(obj)) continue;
         ++found;
+        g_xmasActors.push_back(obj);
         if (idx == ordinal) {
             WriteSeed(obj, g_xmasSeedOff, seed);
             UE_LOGI("seed_sync: applied xmaslight[%u] seed=%d", ordinal, seed);
+            g_xmasActorsResolved = true;
             break;
         }
         ++idx;
     }
+    g_xmasActorsResolved = true;
     sScan.End(found);
 }
 
@@ -211,19 +270,40 @@ void Install(coop::net::Session* session) {
 }
 
 void Tick() {
-    // Resolve classes lazily (BP classes may not be loaded at Install time).
-    if (!g_gpsResolved) {
-        g_gpsCls = ResolveClass(L"garbagePileSpawner_C");
-        if (g_gpsCls) {
-            g_gpsSeedOff = ResolveSeedOffset(g_gpsCls, L"garbagePileSpawner_C");
-            g_gpsResolved = true;
+    // Resolve classes lazily with exponential backoff (BP classes may not be loaded at Install time).
+    // Once a class fails to resolve, back off: 1s -> 2s -> 4s -> 8s -> ... -> 30s max.
+    // This prevents the per-frame FindClass + warning spam that costs 40+ ms on the host.
+    const uint64_t now = static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count());
+
+    if (!g_gpsResolved && !g_gpsFailed) {
+        if (now >= g_gpsNextRetryMs) {
+            g_gpsCls = ResolveClass(L"garbagePileSpawner_C");
+            if (g_gpsCls) {
+                g_gpsSeedOff = ResolveSeedOffset(g_gpsCls, L"garbagePileSpawner_C");
+                g_gpsResolved = true;
+            } else {
+                g_gpsFailed = true;
+                // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 30s cap
+                const uint64_t delay = std::min<uint64_t>(1000ULL << g_gpsRetryCount, 30000ULL);
+                g_gpsNextRetryMs = now + delay;
+                ++g_gpsRetryCount;
+            }
         }
     }
-    if (!g_xmasResolved) {
-        g_xmasCls = ResolveClass(L"xmaslight_C");
-        if (g_xmasCls) {
-            g_xmasSeedOff = ResolveSeedOffset(g_xmasCls, L"xmaslight_C");
-            g_xmasResolved = true;
+    if (!g_xmasResolved && !g_xmasFailed) {
+        if (now >= g_xmasNextRetryMs) {
+            g_xmasCls = ResolveClass(L"xmaslight_C");
+            if (g_xmasCls) {
+                g_xmasSeedOff = ResolveSeedOffset(g_xmasCls, L"xmaslight_C");
+                g_xmasResolved = true;
+            } else {
+                g_xmasFailed = true;
+                const uint64_t delay = std::min<uint64_t>(1000ULL << g_xmasRetryCount, 30000ULL);
+                g_xmasNextRetryMs = now + delay;
+                ++g_xmasRetryCount;
+            }
         }
     }
 
@@ -357,9 +437,19 @@ void OnDisconnect() {
     g_gpsResolved = false;
     g_gpsCls = nullptr;
     g_gpsSeedOff = -1;
+    g_gpsFailed = false;
+    g_gpsNextRetryMs = 0;
+    g_gpsRetryCount = 0;
+    g_gpsActor = nullptr;
+    g_gpsActorResolved = false;
     g_xmasResolved = false;
     g_xmasCls = nullptr;
     g_xmasSeedOff = -1;
+    g_xmasFailed = false;
+    g_xmasNextRetryMs = 0;
+    g_xmasRetryCount = 0;
+    g_xmasActors.clear();
+    g_xmasActorsResolved = false;
     g_xmasSnapshots.clear();
 }
 
