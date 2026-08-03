@@ -471,6 +471,50 @@ bool ReadCharacterIsFalling(void* actor) {
     return mode == P::off::kMOVE_Falling;
 }
 
+bool ReadCharacterIsCrouched(void* actor) {
+    if (!actor || !R::IsLive(actor)) return false;
+    return ReadAt<uint8_t>(actor, P::off::ACharacter_bIsCrouched) != 0;
+}
+
+void DriveCrouchState(void* actor, bool crouched) {
+    if (!actor || !R::IsLive(actor)) return;
+    // Already in the desired state -- no-op.
+    const bool currentlyCrouched = ReadAt<uint8_t>(actor, P::off::ACharacter_bIsCrouched) != 0;
+    if (currentlyCrouched == crouched)
+        return;
+    void* cmc = ReadPtr(actor, P::off::ACharacter_CharacterMovement);
+    void* capsule = ReadPtr(actor, P::off::ACharacter_CapsuleComponent);
+    if (!cmc || !R::IsLive(cmc) || !capsule || !R::IsLive(capsule)) return;
+    // Write the crouch flags.
+    WriteAt<uint8_t>(actor, P::off::ACharacter_bIsCrouched, crouched ? 1 : 0);
+    WriteAt<uint8_t>(cmc, P::off::UCharacterMovement_bWantsToCrouch, crouched ? 1 : 0);
+    // Resize the capsule. The standing half-height is the class default (read
+    // once from the CMC's CrouchedHalfHeight -- which IS the crouched height;
+    // the standing height is the default half-height at spawn time). Cache it
+    // from the first call while standing.
+    static float sStandingHalfH = 0.f;
+    const float crouchedHalfH = ReadAt<float>(cmc, P::off::UCharacterMovement_CrouchedHalfHeight);
+    if (sStandingHalfH <= 0.f) {
+        // First call: read the current capsule height as the standing baseline.
+        sStandingHalfH = ReadAt<float>(capsule, P::off::UCapsuleComponent_CapsuleHalfHeight);
+        if (sStandingHalfH <= 0.f) sStandingHalfH = 88.f;  // VOTV mainPlayer_C default
+    }
+    const float targetHalfH = crouched ? crouchedHalfH : sStandingHalfH;
+    WriteAt<float>(capsule, P::off::UCapsuleComponent_CapsuleHalfHeight, targetHalfH);
+    // Adjust mesh relative Z to keep feet grounded: mesh.RelLoc.Z = -targetHalfH.
+    // The puppet's mesh is the root component, so the actor location IS the capsule
+    // center; shifting the mesh down by the half-height delta keeps the feet at the
+    // same world-Z (matching the source's ACharacter::Crouch mesh adjustment).
+    if (void* mesh = ReadPtr(actor, P::off::ACharacter_Mesh)) {
+        if (R::IsLive(mesh)) {
+            // RelativeLocation.Z is at USceneComponent_RelativeLocation + sizeof(float)
+            // (FVector layout: X @ +0x011C, Y @ +0x0120, Z @ +0x0124).
+            constexpr size_t kRelLocZ = P::off::USceneComponent_RelativeLocation + sizeof(float) * 2;
+            WriteAt<float>(mesh, kRelLocZ, -targetHalfH);
+        }
+    }
+}
+
 void DisableCharacterTicks(void* actor) {
     if (!actor || !R::IsLive(actor)) return;
     DisableMovementTick(actor);

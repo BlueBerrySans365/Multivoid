@@ -36,12 +36,13 @@ struct Stride {
     //   move gate |v| > 10 cm/s (@70241)
     //   run factor 0.75 on accumulated distance while sprinting (@70458;
     //     the run threshold mirrors the speedVolume=400 normalization).
-    // Crouch x2.0 / water x0.5 are omitted: no crouch/water wire state today
-    // (PoseSnapshot stateBits carries only InAir/Ragdoll); revisit with them.
+    //   crouch factor 2.0 on accumulated distance while crouching (v22).
+    // Water x0.5 is omitted: no water wire state today.
     static constexpr float kStrideCm     = 150.f;
     static constexpr float kMinSpeedCmS  = 10.f;
     static constexpr float kRunSpeedCmS  = 400.f;
     static constexpr float kRunFactor    = 0.75f;
+    static constexpr float kCrouchFactor = 2.0f;
     // Teleport/connect-snap guard: a per-frame displacement this large is a
     // warp, not locomotion -- drop the sample (re-prime from the new spot).
     static constexpr float kMaxSampleCm  = 200.f;
@@ -57,7 +58,11 @@ struct Stride {
     // step FX (skin_effects::OnStep) together, so they can never drift apart;
     // the local body's skin_effects::TickStride runs its own instance over the
     // wire-pose samples (RULE 2: one stride emitter).
-    bool StepDue(const ue_wrap::FVector& pos, float speedCmS, bool grounded) {
+    // `crouched` -- v22: when true, the stride accumulator is multiplied by
+    //   kCrouchFactor (2.0x) so crouched players take steps more frequently
+    //   (shorter effective stride = the native BP's crouch footstep behavior).
+    bool StepDue(const ue_wrap::FVector& pos, float speedCmS, bool grounded,
+                 bool crouched = false) {
         if (!grounded || speedCmS <= kMinSpeedCmS) {
             // Idle/airborne: reset like the native chain re-primes lastStep
             // when stopped (@71043). lib_C::step's own ground trace is the
@@ -75,7 +80,8 @@ struct Stride {
         const float d = std::sqrt(dx * dx + dy * dy + dz * dz);
         last_ = pos;
         if (d > kMaxSampleCm) return false;  // warp -- not a stride
-        accum_ += d * (speedCmS > kRunSpeedCmS ? kRunFactor : 1.0f);
+        accum_ += d * (speedCmS > kRunSpeedCmS ? kRunFactor : 1.0f)
+                     * (crouched ? kCrouchFactor : 1.0f);
         if (accum_ >= kStrideCm) {
             accum_ = 0.f;
             return true;

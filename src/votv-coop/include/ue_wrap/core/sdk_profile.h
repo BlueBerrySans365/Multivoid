@@ -321,7 +321,10 @@ inline constexpr size_t AController_ControlRotation = 0x0288;  // FRotator
 inline constexpr size_t ACharacter_Mesh             = 0x0280;          // USkeletalMeshComponent*  Engine.hpp:6970 (native body slot; mainPlayer_C uses mesh_playerVisible @0x04F8 as the authoritative body and the native slot is typically hidden)
 inline constexpr size_t ACharacter_CharacterMovement = 0x0288;         // UCharacterMovementComponent*  Engine.hpp:6971 (mainPlayer_C orphan: must be tick-disabled on the puppet so the satellite is the only Velocity source)
 inline constexpr size_t ACharacter_CapsuleComponent = 0x0290;          // UCapsuleComponent*  Engine.hpp:6972
+inline constexpr size_t ACharacter_bIsCrouched     = 0x0330;          // uint8 (bitfield)  Engine.hpp:6983
 inline constexpr size_t UCapsuleComponent_CapsuleHalfHeight = 0x0468;  // float  Engine.hpp:9883
+inline constexpr size_t UCharacterMovement_CrouchedHalfHeight = 0x01D4; // float  Engine.hpp:9939
+inline constexpr size_t UCharacterMovement_bWantsToCrouch = 0x0388;   // uint8 (bitfield)  Engine.hpp:10025
 
 // UCharacterMovementComponent::MovementMode @ +0x0168 (TEnumAsByte<EMovementMode>).
 // Engine.hpp:9917. Values: MOVE_None=0, MOVE_Walking=1, MOVE_NavWalking=2,

@@ -2796,8 +2796,9 @@ struct PoseSnapshot {
 static_assert(sizeof(PoseSnapshot) == 32, "PoseSnapshot must be 32 bytes");
 
 // PoseSnapshot.stateBits flags. Single-byte field; flags assigned bit-by-bit.
-inline constexpr uint8_t kStateBitInAir   = 0x01;
-inline constexpr uint8_t kStateBitRagdoll = 0x02;  // v20 Inc2b: source is ragdolled (faint/manual-C/KO, NOT dead)
+inline constexpr uint8_t kStateBitInAir    = 0x01;
+inline constexpr uint8_t kStateBitRagdoll  = 0x02;  // v20 Inc2b: source is ragdolled (faint/manual-C/KO, NOT dead)
+inline constexpr uint8_t kStateBitCrouched = 0x04;  // v22: source ACharacter is crouched (bIsCrouched)
 
 // v19: VOTV vital scalars (food, sleep, and the default maxHealth) top out at
 // 100.0. `health` is normalized by the per-peer `maxHealth` (upgrades/story can

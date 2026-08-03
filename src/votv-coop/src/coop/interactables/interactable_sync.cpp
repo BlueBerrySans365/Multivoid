@@ -237,8 +237,6 @@ void OnUseInputPre(void* self, void*, void*) {
     if (!ue_wrap::door::EnsureResolved()) return;
     void* door = ue_wrap::engine::ReadMainPlayerLookAtActor(self);
     if (!door || !ue_wrap::door::IsDoor(door)) return;
-    const std::wstring key = ue_wrap::door::GetKeyString(door);
-    if (key.empty() || key == L"None") return;  // unkeyed door: native behavior stays
     g_useInputActivePrior = ue_wrap::door::GetActive(door);  // the REAL gate value to restore
     ue_wrap::door::SetActive(door, false);  // close the BP CanOpen gate for THIS dispatch
     g_useInputActiveCleared = door;
@@ -269,7 +267,6 @@ void OnUseInput(void* self, void*, void*) {
         UE_LOGI("door: use-input fired -- lookAtActor=%p isDoor=%d (role=client, connected)", door, isDoor ? 1 : 0);
     if (!isDoor) return;             // not aiming at a door -> not ours
     std::wstring key = ue_wrap::door::GetKeyString(door);
-    if (key.empty() || key == L"None") return;
     // DEBOUNCE: AmainPlayer_C::InpActEvt_use dispatches on BOTH the press AND the release of one
     // tap (~0.3s apart), so a single "use" fires this observer TWICE -> two toggles -> the host
     // opens then immediately closes ("open-closed in 0.3s, nothing changed") and the release's

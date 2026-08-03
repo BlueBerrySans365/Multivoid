@@ -224,6 +224,7 @@ bool RemotePlayer::Spawn(const std::string& skinName) {
     targetHeadYawDelta_ = 0.f;
     window_.Close();
     hasPose_ = false;  // the first network pose SNAPS away from this fake placement
+    wasCrouched_ = false;  // v22: reset crouch state for fresh puppet
     // Push the spawn placement (curPos_, curYaw_) to the engine NOW -- same
     // world transform as the SpawnActor placement, no visual pop.
     ApplyToEngine();
@@ -539,6 +540,7 @@ void RemotePlayer::Destroy() {
     window_.Close();
     dirty_ = false;
     bodyYaw_.Reset(0.f);    // clears the latch + dt clock; re-seeded at the next Spawn
+    wasCrouched_ = false;   // v22: clear crouch state on destroy
     hurtFlashEndMs_ = 0;         // v20 Inc3: clear the hurt-flash (nameplate already unregistered)
     hurtFlashActive_ = false;
     hurtSavedMaterials_.clear(); // the mesh died with the actor -- no restore needed, drop stale ptrs
@@ -680,6 +682,16 @@ void RemotePlayer::ApplyToEngine() {
         // run boundary the stride emitter uses.
         Pup::DriveSprintWalkSpeed(
             actor_, curSpeed_ > coop::puppet_footsteps::Stride::kRunSpeedCmS);
+        // v22 crouch sync: drive the puppet's capsule resize + bIsCrouched
+        // flag from the streamed stateBits bit 2. DriveCrouchState is a
+        // no-op when the crouch state hasn't changed (edge detector).
+        // Must run AFTER DriveCharacterMovement so the capsule dimensions
+        // are consistent with the CMC state we just wrote.
+        {
+            const bool crouched = (curStateBits_ & coop::net::kStateBitCrouched) != 0;
+            Pup::DriveCrouchState(actor_, crouched);
+            wasCrouched_ = crouched;
+        }
         // Footstep audio (hands-on fix 2026-06-10): the native footstep
         // accumulator lives in the puppet's SUPPRESSED mainPlayer BP tick, so
         // the coop layer strides the interp displacement and dispatches the
@@ -691,7 +703,7 @@ void RemotePlayer::ApplyToEngine() {
         // the skin layer's call: a REPLACE-mode variant (mynet) mutes it to 0
         // exactly like the native variant's own lib step call -- lib step
         // still runs its trace/water/friction side effects either way.
-        if (footsteps_.StepDue(curPos_, curSpeed_, !inAir)) {
+        if (footsteps_.StepDue(curPos_, curSpeed_, !inAir, wasCrouched_)) {
             ue_wrap::votv_lib::CharacterStep(
                 actor_, coop::skin_effects::DefaultStepVolume(
                             actor_, coop::puppet_footsteps::Stride::kStepVolume));

@@ -139,6 +139,13 @@ bool ReadLocalPose(void* local, void* controller, coop::net::PoseSnapshot& out) 
             out.stateBits |= coop::net::kStateBitRagdoll;
         }
     }
+    // v22: piggyback the LOCAL player's crouch state. ACharacter::bIsCrouched
+    // is a bitfield byte that Crouch()/UnCrouch() toggle -- same cost class as
+    // ReadCharacterIsFalling (one deref). The receiver uses this to resize the
+    // puppet's capsule and drive the crouch animation.
+    if (ue_wrap::puppet::ReadCharacterIsCrouched(local)) {
+        out.stateBits |= coop::net::kStateBitCrouched;
+    }
     // v19: piggyback the LOCAL player's vitals (health fraction + food + sleep)
     // in the 3 bytes that were `_pad` -- ZERO wire-size change. ue_wrap::vitals
     // reads THIS machine's UsaveSlot_C (one per machine), so the values are

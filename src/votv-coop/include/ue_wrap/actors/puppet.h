@@ -176,6 +176,21 @@ void DriveSprintWalkSpeed(void* puppetActor, bool sprinting);
 //              `mainPlayer_C` whose airborne state we mirror to peers).
 bool ReadCharacterIsFalling(void* actor);
 
+// v22 crouch sync: read ACharacter::bIsCrouched (bitfield byte @ +0x0330).
+// Returns true iff the character is in the crouched state. Symmetric with
+// ReadCharacterIsFalling -- same wrapper pattern, same Principle 7
+// compliance. Returns false on null/dead actor.
+// Game thread only.
+bool ReadCharacterIsCrouched(void* actor);
+
+// v22 crouch sync: drive the puppet's crouch state from a streamed bit.
+// Writes ACharacter::bIsCrouched, CMC::bWantsToCrouch, and resizes the
+// capsule half-height to match the source. The mesh relative-location
+// adjustment keeps the feet grounded during the transition. No-op on
+// null/dead actor or when the state hasn't changed.
+// Game thread only.
+void DriveCrouchState(void* actor, bool crouched);
+
 // ---- kerfur head-look (v39) ----------------------------------------------
 // The kerfur AnimBP (UAnimBlueprint_kerfurOmega_regular_C, shared by NPCs + player
 // puppets) drives the head/neck via two FAnimNode_LookAt nodes that aim at the AnimBP

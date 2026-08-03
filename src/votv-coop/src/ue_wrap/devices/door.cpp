@@ -199,10 +199,21 @@ bool IsDoor(void* obj) {
 }
 
 std::wstring GetKeyString(void* door) {
-    if (!door || g_keyOff < 0) return std::wstring();
-    const R::FName& key = *reinterpret_cast<const R::FName*>(
-        reinterpret_cast<const char*>(door) + g_keyOff);
-    return R::ToString(key);
+    if (!door) return std::wstring();
+    // Primary: the save Key (AtriggerBase_C::Key FName) -- cross-peer stable for
+    // keyed doors. This is the authoritative identity for doors that have one.
+    if (g_keyOff >= 0) {
+        const R::FName& key = *reinterpret_cast<const R::FName*>(
+            reinterpret_cast<const char*>(door) + g_keyOff);
+        std::wstring s = R::ToString(key);
+        if (!s.empty() && s != L"None") return s;
+    }
+    // Fallback for unkeyed doors: the actor's level-export FName (baked into the
+    // cooked package -> deterministic + cross-peer stable). Same identity scheme
+    // as ue_wrap::garage::GetNameKey and ue_wrap::door_box::GetNameKey. This
+    // lets the keyed-interactable replication engine index and sync doors that
+    // have no save Key (most interior doors).
+    return R::ToString(R::NameOf(door));
 }
 
 bool TryReadOpen(void* door, bool& open) {

@@ -318,6 +318,10 @@ private:
     // clear -> MOVE_Walking=1. The kerfur AnimBP reads MovementMode
     // natively to gate the foot-IK alpha (useLegIK/rise).
     uint8_t          curStateBits_ = 0;
+    // v22 crouch sync: edge detector for capsule resize. DriveCrouchState
+    // is a no-op when the state hasn't changed, so we track the last
+    // applied crouch state to avoid redundant writes each tick.
+    bool             wasCrouched_ = false;
 
     // Phase 5F flashlight proxy keep-alive: cached light state for periodic
     // re-apply that prevents UE4 from destroying the light proxy at distance.

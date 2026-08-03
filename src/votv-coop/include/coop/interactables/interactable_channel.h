@@ -486,7 +486,7 @@ public:
             if (nm.rfind(L"Default__", 0) == 0) continue;  // skip CDO
             if (!R::IsLive(obj)) continue;
             std::wstring key = a_.GetKey(obj);
-            if (key.empty() || key == L"None") continue;
+            if (key.empty()) continue;  // only skip truly unresolvable keys (should never happen now that GetKey falls back to FName)
             found.emplace_back(std::move(key), Ref{ obj, R::InternalIndexOf(obj) });
         }
         size_t liveCount = 0;
