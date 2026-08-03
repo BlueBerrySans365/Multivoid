@@ -244,7 +244,7 @@ bool HandleEntityEvent(net::Session& session,
         // MIRROR entries which is correct"). A CLIENT sender may still
         // only allocate in its own peer range.
         if (msg.senderPeerSlot >= 0) {
-            const bool senderIsHost = (msg.senderPeerSlot == 0);
+            const bool senderIsHost = (msg.senderPeerSlot == coop::players::kPeerIdHost);
             const bool ok = senderIsHost
                 ? (coop::element::Registry::IsAllowedHostAllocatedEid(p.elementId) ||
                    coop::element::Registry::IsAllowedPeerAllocatedEid(p.elementId))
@@ -419,7 +419,7 @@ bool HandleEntityEvent(net::Session& session,
         // (finite + in-bounds + in-range eid), then ARM a pending correction; the bound native is snapped
         // at the quiescence sweep (where the bind has registered it + the load tail is settled). If we
         // already quiesced (a late arrival after the sweep fired), apply immediately.
-        if (msg.senderPeerSlot != 0) {
+        if (msg.senderPeerSlot != coop::players::kPeerIdHost) {
             UE_LOGW("event_feed: PropSnapPos from non-host senderPeerSlot=%d -- dropping (host-only)",
                     msg.senderPeerSlot);
             break;
@@ -519,7 +519,7 @@ bool HandleEntityEvent(net::Session& session,
         // with crafted className strings, forcing R::FindClass
         // GUObjectArray walks on the host's game thread per packet (CPU
         // amplification).
-        if (msg.senderPeerSlot != 0) {
+        if (msg.senderPeerSlot != coop::players::kPeerIdHost) {
             UE_LOGW("event_feed: EntitySpawn from non-host senderPeerSlot=%d "
                     "-- dropping (NPC sync is host-only)",
                     msg.senderPeerSlot);
@@ -549,7 +549,7 @@ bool HandleEntityEvent(net::Session& session,
         // Host-authoritative -- reject non-host senders. A malicious
         // client could otherwise destroy any NPC element id it learned
         // from a legitimate EntitySpawn.
-        if (msg.senderPeerSlot != 0) {
+        if (msg.senderPeerSlot != coop::players::kPeerIdHost) {
             UE_LOGW("event_feed: EntityDestroy from non-host senderPeerSlot=%d "
                     "-- dropping (NPC sync is host-only)",
                     msg.senderPeerSlot);
@@ -574,7 +574,7 @@ bool HandleEntityEvent(net::Session& session,
                     static_cast<size_t>(msg.payloadLen), sizeof(net::EntitySpawnPayload));
             break;
         }
-        if (msg.senderPeerSlot != 0) {
+        if (msg.senderPeerSlot != coop::players::kPeerIdHost) {
             UE_LOGW("event_feed: WorldActorSpawn from non-host senderPeerSlot=%d -- dropping (host-only)",
                     msg.senderPeerSlot);
             break;
@@ -599,7 +599,7 @@ bool HandleEntityEvent(net::Session& session,
                     static_cast<size_t>(msg.payloadLen), sizeof(net::EntityDestroyPayload));
             break;
         }
-        if (msg.senderPeerSlot != 0) {
+        if (msg.senderPeerSlot != coop::players::kPeerIdHost) {
             UE_LOGW("event_feed: WorldActorDestroy from non-host senderPeerSlot=%d -- dropping (host-only)",
                     msg.senderPeerSlot);
             break;
@@ -621,7 +621,7 @@ bool HandleEntityEvent(net::Session& session,
                     static_cast<size_t>(msg.payloadLen), sizeof(net::PyramidGatherPayload));
             break;
         }
-        if (msg.senderPeerSlot != 0) {
+        if (msg.senderPeerSlot != coop::players::kPeerIdHost) {
             UE_LOGW("event_feed: PyramidGather from non-host senderPeerSlot=%d -- dropping (host-only)",
                     msg.senderPeerSlot);
             break;

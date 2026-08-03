@@ -244,7 +244,7 @@ void Update(net::Session& session, void* localPlayer) {
             // RestoreVitals is a dev-key path (host presses F3); receiver
             // must enforce host-only origin or any peer could trivially
             // nullify hunger/survival tension.
-            if (msg.senderPeerSlot != 0) {
+            if (msg.senderPeerSlot != coop::players::kPeerIdHost) {
                 UE_LOGW("event_feed: RestoreVitals from non-host senderPeerSlot=%d "
                         "-- dropping (host-only dev-key origin)",
                         msg.senderPeerSlot);
@@ -259,7 +259,7 @@ void Update(net::Session& session, void* localPlayer) {
             // origin (only the host runs enemies); a client never legitimately sends
             // it, and it is not in the relay whitelist so it is never forwarded. The
             // owner-side targetElementId check + the apply live in player_damage.
-            if (msg.senderPeerSlot != 0) {
+            if (msg.senderPeerSlot != coop::players::kPeerIdHost) {
                 UE_LOGW("event_feed: PlayerDamage from non-host senderPeerSlot=%d "
                         "-- dropping (host-only combat origin)", msg.senderPeerSlot);
                 break;
@@ -279,7 +279,7 @@ void Update(net::Session& session, void* localPlayer) {
             // host neutralized its own death and tells us to ragdoll-die for real after a
             // fixed delay. Host-only origin (only the host runs the wisp + the detect);
             // wisp_tear_mirror self-verifies the addressed Player Element id. Not relayed.
-            if (msg.senderPeerSlot != 0) {
+            if (msg.senderPeerSlot != coop::players::kPeerIdHost) {
                 UE_LOGW("event_feed: WispGrab from non-host senderPeerSlot=%d -- dropping "
                         "(host-only wisp origin)", msg.senderPeerSlot);
                 break;
@@ -299,7 +299,7 @@ void Update(net::Session& session, void* localPlayer) {
             // v72 Killer Wisp: play the fatality tear on the LOCAL wisp mirror + (deferred)
             // hold the victim's puppet. Host-only origin; resolves the wisp by element id;
             // not relayed.
-            if (msg.senderPeerSlot != 0) {
+            if (msg.senderPeerSlot != coop::players::kPeerIdHost) {
                 UE_LOGW("event_feed: WispTear from non-host senderPeerSlot=%d -- dropping "
                         "(host-only wisp origin)", msg.senderPeerSlot);
                 break;
@@ -318,7 +318,7 @@ void Update(net::Session& session, void* localPlayer) {
         case net::ReliableKind::BalanceSync: {
             // v30 shared balance: the host broadcast its canonical Points -- mirror it.
             // Host-only origin (the host owns the balance); a client never sends it.
-            if (msg.senderPeerSlot != 0) {
+            if (msg.senderPeerSlot != coop::players::kPeerIdHost) {
                 UE_LOGW("event_feed: BalanceSync from non-host senderPeerSlot=%d -- dropping",
                         msg.senderPeerSlot);
                 break;
@@ -355,7 +355,7 @@ void Update(net::Session& session, void* localPlayer) {
             // TeleportClient targeting client-slot-2 (host's PollGroup
             // fan-out would deliver it) -- a positional griefing/exploit
             // vector at LAN scale, hard exploit at internet scale.
-            if (msg.senderPeerSlot != 0) {
+            if (msg.senderPeerSlot != coop::players::kPeerIdHost) {
                 UE_LOGW("event_feed: TeleportClient from non-host senderPeerSlot=%d "
                         "-- dropping (host-only)",
                         msg.senderPeerSlot);
@@ -414,7 +414,7 @@ void Update(net::Session& session, void* localPlayer) {
                         static_cast<size_t>(msg.payloadLen), sizeof(net::SnapshotBeginPayload));
                 break;
             }
-            if (msg.senderPeerSlot != 0) {
+            if (msg.senderPeerSlot != coop::players::kPeerIdHost) {
                 UE_LOGW("event_feed: SnapshotBegin from non-host senderPeerSlot=%d -- dropping",
                         msg.senderPeerSlot);
                 break;
@@ -457,7 +457,7 @@ void Update(net::Session& session, void* localPlayer) {
                         static_cast<size_t>(msg.payloadLen), sizeof(net::SnapshotEndPayload));
                 break;
             }
-            if (msg.senderPeerSlot != 0) {
+            if (msg.senderPeerSlot != coop::players::kPeerIdHost) {
                 UE_LOGW("event_feed: SnapshotComplete from non-host senderPeerSlot=%d -- dropping",
                         msg.senderPeerSlot);
                 break;

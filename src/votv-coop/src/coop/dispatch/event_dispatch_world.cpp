@@ -7,6 +7,7 @@
 #include "event_dispatch.h"  // co-located private header (src tree, not include/)
 
 #include "coop/element/registry.h"
+#include "coop/player/players_registry.h"  // kPeerIdHost
 
 #include "coop/comms/chat_sync.h"
 #include "coop/world/alarm_sync.h"
@@ -59,7 +60,7 @@ bool VerifySenderEidRange(int senderPeerSlot,
         return true;  // 0 sentinel; no compare. peer-slot fallback applies.
     }
     if (senderPeerSlot < 0) return true;  // unknown sender; skip range check
-    const bool senderIsHost = (senderPeerSlot == 0);
+    const bool senderIsHost = (senderPeerSlot == coop::players::kPeerIdHost);
     if (!coop::element::Registry::IsAllowedSenderEid(
             senderIsHost, senderElementId)) {
         UE_LOGW("event_feed: %s senderElementId=0x%08x out of allowed %s "
@@ -121,7 +122,7 @@ bool HandleWorldEvent(net::Session& session,
             UE_LOGI("event_feed: EventFire received on host -- dropping (host is the authority)");
             break;
         }
-        if (msg.senderPeerSlot != 0) {
+        if (msg.senderPeerSlot != coop::players::kPeerIdHost) {
             UE_LOGW("event_feed: EventFire from non-host senderPeerSlot=%d -- dropping",
                     msg.senderPeerSlot);
             break;
@@ -144,7 +145,7 @@ bool HandleWorldEvent(net::Session& session,
             UE_LOGI("event_feed: EventSnapshot received on host -- dropping (host is the authority)");
             break;
         }
-        if (msg.senderPeerSlot != 0) {
+        if (msg.senderPeerSlot != coop::players::kPeerIdHost) {
             UE_LOGW("event_feed: EventSnapshot from non-host senderPeerSlot=%d -- dropping",
                     msg.senderPeerSlot);
             break;
@@ -254,7 +255,7 @@ bool HandleWorldEvent(net::Session& session,
                     static_cast<size_t>(msg.payloadLen), sizeof(net::ChatLinePayload));
             break;
         }
-        if (msg.senderPeerSlot != 0) {
+        if (msg.senderPeerSlot != coop::players::kPeerIdHost) {
             // Only the host authors. A client claiming to is a protocol violation, and
             // accepting it would let any peer write the lobby's permanent record.
             UE_LOGW("event_feed: ChatLine from senderPeerSlot=%d -- only the host "
@@ -270,7 +271,7 @@ bool HandleWorldEvent(net::Session& session,
         // v36 (2026-06-07): HOST-authoritative world clock (time-of-day). HOST->client; the
         // client applies it to its cycle (OnReliable no-ops on the host defensively).
         // Trust gate (like every other host-only kind): only slot 0 (the host) may set the clock.
-        if (msg.senderPeerSlot != 0) {
+        if (msg.senderPeerSlot != coop::players::kPeerIdHost) {
             UE_LOGW("event_feed: TimeSync from non-host senderPeerSlot=%d -- dropping", msg.senderPeerSlot);
             break;
         }
@@ -298,7 +299,7 @@ bool HandleWorldEvent(net::Session& session,
         // v44 (2026-06-08): HOST-authoritative night-sky orientation + moon phase (Anewsky_C).
         // HOST->client; trust-gated to slot 0 like TimeSync. The client writes the sky mesh
         // world rotation + moonPhase (sky_sync::OnReliable no-ops on the host defensively).
-        if (msg.senderPeerSlot != 0) {
+        if (msg.senderPeerSlot != coop::players::kPeerIdHost) {
             UE_LOGW("event_feed: SkyState from non-host senderPeerSlot=%d -- dropping", msg.senderPeerSlot);
             break;
         }
@@ -338,7 +339,7 @@ bool HandleWorldEvent(net::Session& session,
         }
         // v13 (A4 2026-05-29): host trust-bound. RedSky is host-only;
         // a non-host senderPeerSlot is a protocol violation.
-        if (msg.senderPeerSlot != 0) {
+        if (msg.senderPeerSlot != coop::players::kPeerIdHost) {
             UE_LOGW("event_feed: RedSky from non-host senderPeerSlot=%d "
                     "(senderElementId=0x%08x) -- dropping",
                     msg.senderPeerSlot, p.senderElementId);
@@ -382,7 +383,7 @@ bool HandleWorldEvent(net::Session& session,
         }
         // v13 (A4 2026-05-29): host trust-bound. LightningStrike is
         // host-only; a non-host senderPeerSlot is a protocol violation.
-        if (msg.senderPeerSlot != 0) {
+        if (msg.senderPeerSlot != coop::players::kPeerIdHost) {
             UE_LOGW("event_feed: LightningStrike from non-host "
                     "senderPeerSlot=%d (senderElementId=0x%08x) -- dropping",
                     msg.senderPeerSlot, p.senderElementId);
@@ -432,7 +433,7 @@ bool HandleWorldEvent(net::Session& session,
         }
         // v13 (A4 2026-05-29): host trust-bound. WeatherState is
         // host-only; a non-host senderPeerSlot is a protocol violation.
-        if (msg.senderPeerSlot != 0) {
+        if (msg.senderPeerSlot != coop::players::kPeerIdHost) {
             UE_LOGW("event_feed: WeatherState from non-host "
                     "senderPeerSlot=%d (senderElementId=0x%08x) -- dropping",
                     msg.senderPeerSlot, p.senderElementId);
@@ -482,7 +483,7 @@ bool HandleWorldEvent(net::Session& session,
             UE_LOGI("event_feed: SeedSync received on host -- dropping");
             break;
         }
-        if (msg.senderPeerSlot != 0) {
+        if (msg.senderPeerSlot != coop::players::kPeerIdHost) {
             UE_LOGW("event_feed: SeedSync from non-host slot %d -- dropping",
                     msg.senderPeerSlot);
             break;

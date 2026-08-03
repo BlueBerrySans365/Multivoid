@@ -12,6 +12,7 @@
 
 #include "coop/interactables/atv_sync.h"
 #include "coop/interactables/drone_call_sync.h"
+#include "coop/player/players_registry.h"  // kPeerIdHost
 #include "coop/player/sleep_sync.h"
 #include "coop/interactables/device_occupancy.h"
 #include "coop/world/email_sync.h"
@@ -170,7 +171,7 @@ bool HandleStateEvent(net::Session& session,
     case net::ReliableKind::AtvSpawn: {
         // v77: HOST->client purchased-ATV announce. The client fresh-spawns a native AATV_C it has no
         // save-twin of (host-only economy delivery). HOST-AUTHORITATIVE -- trust only slot 0.
-        if (msg.senderPeerSlot != 0) {
+        if (msg.senderPeerSlot != coop::players::kPeerIdHost) {
             UE_LOGW("event_feed: AtvSpawn from non-host senderPeerSlot=%d -- dropping", msg.senderPeerSlot);
             break;
         }
@@ -186,7 +187,7 @@ bool HandleStateEvent(net::Session& session,
     }
     case net::ReliableKind::AtvDestroy: {
         // v77: HOST->client purchased-ATV teardown. HOST-AUTHORITATIVE -- trust only slot 0.
-        if (msg.senderPeerSlot != 0) {
+        if (msg.senderPeerSlot != coop::players::kPeerIdHost) {
             UE_LOGW("event_feed: AtvDestroy from non-host senderPeerSlot=%d -- dropping", msg.senderPeerSlot);
             break;
         }
@@ -227,7 +228,7 @@ bool HandleStateEvent(net::Session& session,
         // HOST->client only; trust-gated to slot 0 (like SkyState/TimeSync). The client
         // suppresses its own drone ReceiveTick + mirrors the streamed transform. RE:
         // votv-delivery-drone-RE-and-coop-sync-design-2026-06-03.md.
-        if (msg.senderPeerSlot != 0) {
+        if (msg.senderPeerSlot != coop::players::kPeerIdHost) {
             UE_LOGW("event_feed: DroneState from non-host senderPeerSlot=%d -- dropping", msg.senderPeerSlot);
             break;
         }
@@ -248,8 +249,8 @@ bool HandleStateEvent(net::Session& session,
     }
     case net::ReliableKind::DroneCallRequest: {
         // T2-8: client pressed E on the droneConsole. HOST-only; no payload (singleton).
-        // Trust-gated: only clients (senderPeerSlot != 0) may send this.
-        if (msg.senderPeerSlot == 0) {
+        // Trust-gated: only clients (senderPeerSlot != kPeerIdHost) may send this.
+        if (msg.senderPeerSlot == coop::players::kPeerIdHost) {
             UE_LOGW("event_feed: DroneCallRequest from host -- dropping");
             break;
         }
@@ -353,7 +354,7 @@ bool HandleStateEvent(net::Session& session,
         // trust-gated to slot 0 like DroneState (a client never legitimately sends
         // it, and it is not in the relay whitelist). Finite-validation + the
         // client-only apply live in turbine_sync::OnReliable.
-        if (msg.senderPeerSlot != 0) {
+        if (msg.senderPeerSlot != coop::players::kPeerIdHost) {
             UE_LOGW("event_feed: TurbineState from non-host senderPeerSlot=%d -- dropping",
                     msg.senderPeerSlot);
             break;
@@ -413,7 +414,7 @@ bool HandleStateEvent(net::Session& session,
     case net::ReliableKind::DreamSpawn: {
         // v137: HOST->ALL dream spawn announcement. The host's nightmare roll
         // succeeded; clients spawn a mirror copy of the dream class.
-        if (msg.senderPeerSlot != 0) {
+        if (msg.senderPeerSlot != coop::players::kPeerIdHost) {
             UE_LOGW("event_feed: DreamSpawn from non-host senderPeerSlot=%d -- dropping",
                     msg.senderPeerSlot);
             break;
@@ -431,7 +432,7 @@ bool HandleStateEvent(net::Session& session,
     case net::ReliableKind::DreamEnd: {
         // v137: HOST->ALL dream end announcement. The host's dream ended;
         // clients exit their dream mirrors.
-        if (msg.senderPeerSlot != 0) {
+        if (msg.senderPeerSlot != coop::players::kPeerIdHost) {
             UE_LOGW("event_feed: DreamEnd from non-host senderPeerSlot=%d -- dropping",
                     msg.senderPeerSlot);
             break;
@@ -448,7 +449,7 @@ bool HandleStateEvent(net::Session& session,
     case net::ReliableKind::AtvOccupied: {
         // v138: HOST->CLIENT rejection when a second player tries to sit in an occupied ATV.
         // Client-only: the host sends this with the ATV key + the driver's slot.
-        if (msg.senderPeerSlot != 0) {
+        if (msg.senderPeerSlot != coop::players::kPeerIdHost) {
             UE_LOGW("event_feed: AtvOccupied from non-host senderPeerSlot=%d -- dropping",
                     msg.senderPeerSlot);
             break;
@@ -477,7 +478,7 @@ bool HandleStateEvent(net::Session& session,
         // post-e5718fc6 -- drop it so one client-side regression can't re-pollute
         // the shared inbox (also removed from the relay whitelist,
         // session_lanes.h).
-        if (session.role() == net::Role::Host && msg.senderPeerSlot != 0) {
+        if (session.role() == net::Role::Host && msg.senderPeerSlot != coop::players::kPeerIdHost) {
             UE_LOGW("event_feed: EmailAppend from client slot=%d on the HOST "
                     "(emails are host-authored) -- dropping", msg.senderPeerSlot);
             break;
@@ -573,7 +574,7 @@ bool HandleStateEvent(net::Session& session,
         if (session.role() != net::Role::Client) {
             break;
         }
-        if (msg.senderPeerSlot != 0) {
+        if (msg.senderPeerSlot != coop::players::kPeerIdHost) {
             UE_LOGW("event_feed: KerfurConvert from non-host senderPeerSlot=%d -- dropping",
                     msg.senderPeerSlot);
             break;
