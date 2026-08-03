@@ -87,6 +87,16 @@ bool g_interceptorsRegistered = false;  // client PRE interceptors
 // registration sits ABOVE Install's cycle-gated g_installed early-out.
 std::atomic<bool> g_windIsClient{false};
 
+// v50 wind-gust sanity check: track the host's last-applied windTarget so the client
+// can detect divergence if changeWindOrigin bypasses ProcessEvent. On each tick, if
+// the client's windTarget differs from the host's, force-write it back.
+ue_wrap::FVector g_lastHostWindTarget{};
+std::atomic<uint32_t> g_windDesyncCount{0};  // total divergences detected
+
+// Always-on wind apply logging (config-gated, default ON). Set via weather_wind_log=1
+// in config_registry_rows.inc. Logs every wind apply to help diagnose desync.
+bool g_windLogEnabled = true;
+
 // Runtime gate for the 5 scheduler PRE-interceptors (latent-bug fix 2026-06-11,
 // agent-found): the old OnSchedulerPreSuppress returned true UNCONDITIONALLY and
 // was registered client-only at install time -- but interceptors live for the
@@ -366,9 +376,15 @@ uint32_t WindRollFired() {
 uint32_t WindRollSuppressed() {
     return g_windRollSuppressed.load(std::memory_order_relaxed);
 }
+uint32_t WindDesyncCount() {
+    return g_windDesyncCount.load(std::memory_order_relaxed);
+}
 
 void Install(coop::net::Session* session) {
     g_session.store(session, std::memory_order_release);
+
+    // Read config for wind logging (refreshed every Install so runtime toggle works).
+    g_windLogEnabled = coop::config::ResolveFlag(coop::config_registry::rows::weather_wind_log);
 
     // v50 wind-gust suppression (ABOVE the g_installed early-out: the directionalWind class
     // may load after the cycle, and this runs every tick until it registers -- the cycle-
@@ -657,6 +673,29 @@ void TickConnect() {
     if (g_installed) {
         coop::weather_fog::TickClientReconcile(ResolveCycle());
     }
+
+    // CLIENT wind sanity check: if changeWindOrigin bypassed ProcessEvent (the
+    // interceptor never saw it), the client's windTarget diverges from the host's.
+    // Detect and force-write the host value every tick. Throttled to ~1 Hz logging.
+    if (g_installed && g_windIsClient.load(std::memory_order_acquire) &&
+        g_lastHostWindTarget.X != 0.f && g_lastHostWindTarget.Y != 0.f) {
+        ue_wrap::FVector curTgt{};
+        if (ue_wrap::directionalwind::ReadTarget(curTgt)) {
+            const float dx = curTgt.X - g_lastHostWindTarget.X;
+            const float dy = curTgt.Y - g_lastHostWindTarget.Y;
+            const float dz = curTgt.Z - g_lastHostWindTarget.Z;
+            if (dx * dx + dy * dy + dz * dz > 0.1f) {
+                ue_wrap::directionalwind::WriteTarget(g_lastHostWindTarget);
+                const uint32_t count = g_windDesyncCount.fetch_add(1, std::memory_order_relaxed) + 1;
+                if ((count % 10) == 1) {
+                    UE_LOGW("[weather-sync] wind desync #%u: client target=(%.1f,%.1f,%.1f) "
+                            "host target=(%.1f,%.1f,%.1f) -- force-corrected",
+                            count, curTgt.X, curTgt.Y, curTgt.Z,
+                            g_lastHostWindTarget.X, g_lastHostWindTarget.Y, g_lastHostWindTarget.Z);
+                }
+            }
+        }
+    }
 }
 
 void OnDisconnect() {
@@ -667,6 +706,8 @@ void OnDisconnect() {
     g_pendingApply = false;
     g_pendingApplyPayload = {};
     g_lastSentSig.store(kNoSendYet, std::memory_order_release);
+    g_lastHostWindTarget = {};
+    g_windDesyncCount.store(0, std::memory_order_relaxed);
     // Cycle cache may dangle if the session ends mid-level-transition;
     // clear so the next ResolveCycle re-walks via FindObjectByClass.
     g_cycleCache = nullptr;
@@ -767,8 +808,15 @@ void ApplyFromHost(const coop::net::WeatherStatePayload& payload) {
         wind.speedRain    = payload.windSpeedRain;
         wind.strengthRain = payload.windStrengthRain;
         ue_wrap::directionalwind::Write(wind);
-        ue_wrap::directionalwind::WriteTarget(
-            ue_wrap::FVector{ payload.windTargetX, payload.windTargetY, payload.windTargetZ });
+        const ue_wrap::FVector tgt{ payload.windTargetX, payload.windTargetY, payload.windTargetZ };
+        ue_wrap::directionalwind::WriteTarget(tgt);
+        g_lastHostWindTarget = tgt;
+        if (g_windLogEnabled) {
+            UE_LOGI("[weather-sync] wind applied: speedBg=%.2f strBg=%.2f "
+                    "speedRain=%.2f strRain=%.2f target=(%.1f,%.1f,%.1f)",
+                    wind.speedBg, wind.strengthBg, wind.speedRain, wind.strengthRain,
+                    tgt.X, tgt.Y, tgt.Z);
+        }
     }
 
     UE_LOGI("weather: applied flags 0x%02X -> 0x%02X flags2=0x%02X rain=%.2f lc=%.2f "

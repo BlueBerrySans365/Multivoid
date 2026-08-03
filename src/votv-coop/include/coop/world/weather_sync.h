@@ -76,6 +76,10 @@ void ApplyFromHost(const coop::net::WeatherStatePayload& payload);
 uint32_t WindRollFired();
 uint32_t WindRollSuppressed();
 
+// Wind desync counter: incremented each time the client's windTarget diverges
+// from the host's and is force-corrected. Logged every 10th occurrence.
+uint32_t WindDesyncCount();
+
 // (DebugForceRain / DebugForceSnow / ReadLocalIsRaining live in
 // coop/world/weather_rain.h -- the rain+snow cycle-side sub-lane module.
 // The DebugForceRedSky / ApplyRedSky / ApplyLightningStrike thin forwards

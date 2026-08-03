@@ -188,6 +188,8 @@ CFG_FLAG(weather_observer_log, "weather_observer_log", "dev", false, nullptr,
     "Diagnostic logging for the weather sync observers.")
 CFG_FLAG(weather_probe, "weather_probe", "dev", false, nullptr,
     "Diagnostic probe block for the weather subsystem.")
+CFG_FLAG(weather_wind_log, "weather_wind_log", "dev", true, nullptr,
+    "Always-on wind apply logging for desync diagnosis. Default ON.")
 CFG_FLAG(meadow_selftest, "meadow_selftest", "dev", false, nullptr,
     "Autonomous selftest: meadow signal database sync.")
 CFG_FLAG(laptop_selftest, "laptop_selftest", "dev", false, nullptr,
