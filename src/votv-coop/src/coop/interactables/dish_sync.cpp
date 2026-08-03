@@ -2,6 +2,7 @@
 
 #include "coop/interactables/dish_sync.h"
 
+#include "coop/element/lerp_window.h"
 #include "coop/net/session.h"
 
 #include "ue_wrap/desk/console_desk.h"
@@ -66,6 +67,19 @@ void* g_parkedUncalib = nullptr;
 float g_prevCalib[coop::net::kMaxDishes] = {};
 bool g_haveCalibBaseline = false;
 
+// ---- client interpolation state --------------------------------------------
+// Per-dish lerp: smooths the 4 Hz host pose updates into continuous motion.
+// curYaw/curRoll track the interpolated position; target* are the latest wire values.
+struct DishLerp {
+    float curYaw = 0.f;
+    float curRoll = 0.f;
+    float targetYaw = 0.f;
+    float targetRoll = 0.f;
+    coop::LerpWindow lerp;
+};
+DishLerp g_dishLerp[coop::net::kMaxDishes];
+constexpr int kDishInterpWindowMs = 200;  // slightly less than 250ms send interval
+
 void ResetModuleState() {
     g_havePrevMovingHost = false;
     g_settleLeft = 0;
@@ -79,6 +93,10 @@ void ResetModuleState() {
     g_parkedDisher = nullptr;
     g_parkedUncalib = nullptr;
     g_haveCalibBaseline = false;
+    for (auto& d : g_dishLerp) {
+        d.curYaw = d.curRoll = d.targetYaw = d.targetRoll = 0.f;
+        d.lerp.Close();
+    }
 }
 
 // True once per desk-instance change (boot + mid-session level reload).
@@ -99,11 +117,35 @@ float DequantCalib(uint16_t q) { return static_cast<float>(q) / 65535.f; }
 
 // ---- the ONE row applier (stream rows AND snapshot rows) -------------------
 // shadow -> pose -> raw isMoving -> activeDishes -> cue edges. GT only.
-void ApplyDishRow(int32_t index, bool isMoving, float yawZ, float rollY) {
+// When snap=true (snapshot/connect), writes immediately. When snap=false (stream),
+// stores target angles and opens a lerp window for smooth interpolation.
+void ApplyDishRow(int32_t index, bool isMoving, float yawZ, float rollY, bool snap = false) {
     if (index < 0 || index >= coop::net::kMaxDishes) return;
     const bool wasShadow = g_shadowMoving[index];
     g_shadowMoving[index] = isMoving;
-    D::WritePose(index, yawZ, rollY);
+    auto& d = g_dishLerp[index];
+    if (snap) {
+        // Immediate snap: seed lerp state and write directly.
+        d.curYaw = yawZ;
+        d.curRoll = rollY;
+        d.targetYaw = yawZ;
+        d.targetRoll = rollY;
+        d.lerp.Close();
+        D::WritePose(index, yawZ, rollY);
+    } else {
+        // Stream path: store target and open lerp window.
+        // Seed cur from current position on first packet or after lerp was closed.
+        if (!d.lerp.IsOpen()) {
+            d.curYaw = d.targetYaw;
+            d.curRoll = d.targetRoll;
+        }
+        d.targetYaw = yawZ;
+        d.targetRoll = rollY;
+        const auto now = static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                Clock::now().time_since_epoch()).count());
+        d.lerp.Open(now, kDishInterpWindowMs);
+    }
     D::WriteIsMoving(index, isMoving);
     D::WriteActiveDish(index, isMoving);
     if (isMoving && !wasShadow) {
@@ -143,7 +185,8 @@ void ApplyPoseBatch(const coop::net::DishPoseBody& body) {
             continue;
         }
         ApplyDishRow(r.index, r.isMoving != 0,
-                     coop::net::DequantDeg(r.yawCdeg), coop::net::DequantDeg(r.rollCdeg));
+                     coop::net::DequantDeg(r.yawCdeg), coop::net::DequantDeg(r.rollCdeg),
+                     /*snap=*/false);
     }
 }
 
@@ -331,6 +374,28 @@ void ClientParkLatch() {
 
 }  // namespace
 
+// Client-side dish interpolation: advance all per-dish lerps and write the
+// interpolated angles. Called every tick on the client.
+void TickDishInterp() {
+    const auto now = static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            Clock::now().time_since_epoch()).count());
+    for (int32_t i = 0; i < coop::net::kMaxDishes; ++i) {
+        auto& d = g_dishLerp[i];
+        if (!d.lerp.IsOpen()) continue;
+        bool arrived = false;
+        const float alpha = d.lerp.Advance(now, &arrived);
+        const float yaw = d.curYaw + (d.targetYaw - d.curYaw) * alpha;
+        const float roll = d.curRoll + (d.targetRoll - d.curRoll) * alpha;
+        D::WritePose(i, yaw, roll);
+        if (arrived) {
+            d.curYaw = d.targetYaw;
+            d.curRoll = d.targetRoll;
+            D::WritePose(i, d.curYaw, d.curRoll);
+        }
+    }
+}
+
 void Install(coop::net::Session* session) {
     g_session.store(session, std::memory_order_release);
 }
@@ -362,6 +427,8 @@ void Tick() {
         coop::net::DishPoseBody body{};
         bool isNew = false;
         if (s->TryGetHostDishPose(body, &isNew) && isNew) ApplyPoseBatch(body);
+        // Advance per-dish interpolation every tick (smooth motion between 4 Hz updates).
+        TickDishInterp();
     }
 
     if (now >= g_nextSlow) {
@@ -431,7 +498,8 @@ void OnDishSnapshot(const coop::net::DishSnapshotPayload& p, uint8_t senderSlot)
     for (int32_t i = 0; i < n; ++i) {
         const auto& r = p.rows[i];
         ApplyDishRow(i, r.isMoving != 0,
-                     coop::net::DequantDeg(r.yawCdeg), coop::net::DequantDeg(r.rollCdeg));
+                     coop::net::DequantDeg(r.yawCdeg), coop::net::DequantDeg(r.rollCdeg),
+                     /*snap=*/true);
         // Snapshot activeDishes may differ from isMoving mid-transition on the
         // host -- trust the explicit mask over the row-apply default.
         D::WriteActiveDish(i, r.activeDish != 0);
