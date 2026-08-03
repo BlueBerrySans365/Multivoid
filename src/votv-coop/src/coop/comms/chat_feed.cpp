@@ -564,6 +564,7 @@ void Reset() {
         g_prevLiveCount = 0;
     }
     g_count.store(0, std::memory_order_relaxed);
+    g_retentionFrozen.store(false, std::memory_order_relaxed);
 }
 
 }  // namespace coop::chat_feed

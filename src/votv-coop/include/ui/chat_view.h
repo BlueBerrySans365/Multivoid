@@ -25,4 +25,8 @@ namespace ui::chat_view {
 // top. No-ops when there is nothing to show.
 void Draw();
 
+// Session-boundary reset: clear reveal ramp state, scroll anchor, and pin state.
+// Called from the teardown path so stale values don't carry into the next session.
+void Reset();
+
 }  // namespace ui::chat_view

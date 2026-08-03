@@ -17,6 +17,7 @@
 #include "coop/comms/chat_sync.h"   // Reset() -- the lobby's chat record dies with the session too
 #include "coop/player/nameplate.h"   // ResetSlots() on flee -- HasAny() keeps hud::IsActive() alive in the menu
 #include "ui/chat_input.h"           // Close() on flee -- an OPEN chat box must not survive into the menu
+#include "ui/chat_view.h"            // Reset() on flee -- clear reveal ramp + scroll anchor
 #include "ui/voice_panel.h"          // Close() on flee -- don't leave the voice panel open across the transition
 #include "coop/dev/leak_probe.h"
 #include "coop/dev/heap_probe.h"
@@ -203,6 +204,7 @@ void FleeToMainMenu(coop::net::Session& session, const char* why, bool travel = 
     coop::chat_bubbles::ResetSlots();
     coop::nameplate::ResetSlots();
     ui::chat_input::Close();
+    ui::chat_view::Reset();
     ui::voice_panel::Close();
     // The feed Reset above is NOT sufficient on its own: session.Stop() (called
     // above) flips every peer slot connected->disconnected, and the NEXT

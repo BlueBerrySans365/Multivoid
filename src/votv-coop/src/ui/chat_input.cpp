@@ -75,6 +75,8 @@ void Close() {
     g_open.store(false, std::memory_order_relaxed);
     g_buf[0] = '\0';
     g_histPos = -1;
+    g_history.clear();
+    g_liveStash.clear();
     coop::chat_feed::SetChatOpen(false);
 }
 

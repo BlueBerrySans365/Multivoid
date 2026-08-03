@@ -17,6 +17,7 @@
 #include "coop/config/config.h"  // IsIniKeyTrue -- v86 Path 1c JOIN-WINDOW CLOSED hands-on cue gate
 #include "coop/interactables/interactable_sync.h"
 #include "ui/join_curtain.h"  // instant-world SEAM 1: the short curtain (Show at SnapshotBegin / dismiss at Complete)
+#include "ui/chat_view.h"     // Reset() on session start -- clear stale reveal/anchor from prior lobby
 #include "coop/session/join_progress.h"
 #include "coop/element/mirror_defer.h"  // instant-world SEAM 2+3: arm deferred-hide / reveal-confirmed at the lift
 #include "coop/net/session.h"
@@ -125,6 +126,7 @@ void OnSessionStart() {
                                // re-host in one process would otherwise seed lobby B's
                                // joiner with lobby A's conversation
     coop::chat_bubbles::ResetSlots();  // 12g: no prior session's overhead bubbles either
+    ui::chat_view::Reset();  // clear stale reveal ramp + scroll anchor from prior lobby
 }
 
 void Update(net::Session& session, void* localPlayer) {

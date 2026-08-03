@@ -96,9 +96,27 @@ void SetPinned(bool pinned) {
         // it is the only observable the scroll has. Without it a drill can press
         // PgUp and see nothing, which is also what a BROKEN pager looks like.
         UE_LOGI("chat_view: %s", pinned ? "PINNED (paged back; retention frozen)"
-                                        : "FOLLOW (retention live)");
+                                         : "FOLLOW (retention live)");
         coop::chat_feed::SetRetentionFrozen(pinned);
         g_frozenPublished = pinned;
+    }
+}
+
+void Reset() {
+    // Clear reveal ramp state so the next session's first T-open starts from 0.
+    g_revealValue = 0.f;
+    g_revealFrom  = 0.f;
+    g_revealTo    = 0.f;
+    g_revealStart = 0;
+    g_openLogged  = false;
+    g_openedAtMs  = 0;
+    // Clear scroll anchor / pin state so stale keys don't match in the new snapshot.
+    g_pinned = false;
+    g_anchorKey = 0;
+    g_anchorSub = 0;
+    if (g_frozenPublished) {
+        coop::chat_feed::SetRetentionFrozen(false);
+        g_frozenPublished = false;
     }
 }
 
