@@ -567,16 +567,16 @@ void ResolveRederiveFns() {
     void* contCls = ContainerClass();
     void* invCls  = InventoryClass();
     if (!contCls || !invCls) return;  // classes not loaded yet -- retry on the next apply
-    g_rederiveResolved = true;
     g_fnUpdateVol  = R::FindFunction(contCls, L"updateVolumesAndMass");
     g_fnRecalcName = R::FindFunction(invCls,  L"recalculateNames");
     if (g_fnUpdateVol && g_fnRecalcName) {
+        g_rederiveResolved = true;  // latch ONLY after successful resolution
         UE_LOGI("container_contents: re-derive verbs resolved (updateVolumesAndMass=%p on "
                 "prop_container_C, recalculateNames=%p on propInventory_C)",
                 g_fnUpdateVol, g_fnRecalcName);
     } else {
         UE_LOGW("container_contents: re-derive verb MISSING (updateVolumesAndMass=%p "
-                "recalculateNames=%p) -- applied contents will show a STALE currVol / names",
+                "recalculateNames=%p) -- will retry on next apply",
                 g_fnUpdateVol, g_fnRecalcName);
     }
 }
