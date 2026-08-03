@@ -71,7 +71,7 @@ void PutU64(std::vector<uint8_t>& b, uint64_t v) {
 }
 void PutStr(std::vector<uint8_t>& b, const std::wstring& w) {
     std::string u = coop::chat_feed::ToUtf8(w);
-    if (u.size() > 0xFFFF) u.resize(0xFFFF);
+    if (u.size() > coop::net::kMaxWireStrLen) u.resize(coop::net::kMaxWireStrLen);
     PutU16(b, static_cast<uint16_t>(u.size()));
     b.insert(b.end(), u.begin(), u.end());
 }
@@ -399,9 +399,13 @@ void OnBoxChunk(const coop::net::BlobChunkPayload& p, uint8_t senderSlot) {
             if (!r.ok) return;
             a.types.push_back(type);
             a.data.push_back(str);
-            if (a.data.size() > 15)
-                UE_LOGW("floppybox: box eid=%u exceeds the native cap (%zu) -- divergence "
-                        "healed by canonical, watch for a dupe source", eid, a.data.size());
+            if (a.data.size() > 15) {
+                UE_LOGW("floppybox: box eid=%u exceeds the native cap (%zu) -- rejected "
+                        "(canonical heals)", eid, a.data.size());
+                a.data.pop_back();
+                a.types.pop_back();
+                return;
+            }
             FB::WriteArraysAndGen(actor, a);
             { FB::BoxArrays copy = a; PrimeShadow(eid, actor, std::move(copy)); }
             UE_LOGI("floppybox: push applied (eid=%u type=%d, from slot %u)",

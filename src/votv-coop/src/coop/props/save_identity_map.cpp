@@ -4,6 +4,7 @@
 
 #include "coop/element/element.h"          // ElementId, kInvalidId
 #include "coop/creatures/kerfur_entity.h"            // IsKerfurPropClass (UClass* form)
+#include "coop/net/protocol.h"             // kMaxWireStrLen
 #include "coop/props/prop_element_tracker.h"     // CollectTrackedPileTransforms / CollectTrackedKerfurTransforms
 #include "ue_wrap/core/hot_path_guard.h"        // UE_ASSERT_GAME_THREAD
 #include "ue_wrap/core/log.h"
@@ -245,7 +246,7 @@ void SerializeSidecar(const IdMap& map, std::vector<uint8_t>& out) {
         AppendF32_(out, e.savePosZ);
         // sidecar v3: portable save key (ASCII keys -- off-kerfur keys are alphanumeric identifiers; byte-narrow
         // each wchar like the protocol's className[64]). u16 length-prefixed; 0 for a keyless chipPile entry.
-        const uint16_t keyLen = static_cast<uint16_t>(e.key.size() > 0xFFFFu ? 0xFFFFu : e.key.size());
+        const uint16_t keyLen = static_cast<uint16_t>(e.key.size() > coop::net::kMaxWireStrLen ? coop::net::kMaxWireStrLen : e.key.size());
         out.push_back(static_cast<uint8_t>(keyLen & 0xFF));
         out.push_back(static_cast<uint8_t>((keyLen >> 8) & 0xFF));
         for (uint16_t i = 0; i < keyLen; ++i) out.push_back(static_cast<uint8_t>(e.key[i] & 0xFF));

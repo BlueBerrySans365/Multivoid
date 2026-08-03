@@ -199,7 +199,7 @@ bool CommonOrderChanged(const std::vector<uint64_t>& base,
 }
 
 std::vector<uint8_t> OrderBlob(const std::vector<uint64_t>& seq) {
-    const uint16_t n = static_cast<uint16_t>(seq.size() > 0xFFFF ? 0xFFFF : seq.size());
+    const uint16_t n = static_cast<uint16_t>(seq.size() > coop::net::kMaxWireStrLen ? coop::net::kMaxWireStrLen : seq.size());
     std::vector<uint8_t> b(2 + static_cast<size_t>(n) * 8);
     std::memcpy(b.data(), &n, 2);
     for (uint16_t i = 0; i < n; ++i)

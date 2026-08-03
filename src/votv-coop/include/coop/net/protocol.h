@@ -5114,6 +5114,10 @@ inline constexpr int kMaxReliablePayload = kMaxPacketBytes - 20 - 8;
 inline constexpr float kMaxCoord = 1.0e6f;
 inline constexpr float kMaxSpeed = 1.0e5f;  // cm/s (well above any real walk/sprint)
 
+// Max wire-string length (UTF-16 code units) for AppWStr/PutStr. uint16 max = 65535.
+// Used by floppybox, laptop_buffer, meadow_db, save_identity_map.
+inline constexpr uint32_t kMaxWireStrLen = 0xFFFF;
+
 // Fill a header in-place. `senderEpoch` is the sender's m_ownEpoch (Session
 // mints non-zero at Start()); the receiver latches on first sighting + rejects
 // mismatches per peer slot (v16 stale-generation defense, see PacketHeader doc).

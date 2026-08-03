@@ -98,7 +98,7 @@ void PutU64(std::vector<uint8_t>& b, uint64_t v) {
 }
 void PutStr(std::vector<uint8_t>& b, const std::wstring& w) {
     std::string u = coop::chat_feed::ToUtf8(w);
-    if (u.size() > 0xFFFF) u.resize(0xFFFF);
+    if (u.size() > coop::net::kMaxWireStrLen) u.resize(coop::net::kMaxWireStrLen);
     PutU16(b, static_cast<uint16_t>(u.size()));
     b.insert(b.end(), u.begin(), u.end());
 }
@@ -311,6 +311,11 @@ void HostApplyBatch(Reader& r, uint8_t senderSlot) {
                 q.bufferUids.erase(q.bufferUids.begin() + at);
             ++applied;
         } else {
+            if (arr.size() >= 1024) {
+                UE_LOGW("laptop_buffer: append rejected (arr=%u size=%zu cap=1024, from slot %u)",
+                        op.arrayId, arr.size(), static_cast<unsigned>(senderSlot));
+                continue;
+            }
             arr.push_back(op.str);
             if (op.arrayId == 1) q.bufferUids.push_back(op.uid);
             ++applied;

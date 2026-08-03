@@ -132,7 +132,7 @@ void RowToWire(const SR::SignalRow& r, coop::net::WireSkySignal& w) {
         static bool sWarned = false;
         if (!sWarned) {
             sWarned = true;
-            UE_LOGW("console_state: sky-signal objectName '%ls' exceeds the 15-char wire "
+            UE_LOGW("console_state: sky-signal objectName '%ls' exceeds the 14-char wire "
                     "budget -- truncated (receiver FName will differ)", r.objectName.c_str());
         }
     }

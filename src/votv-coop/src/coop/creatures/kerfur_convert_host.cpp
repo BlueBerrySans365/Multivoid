@@ -35,6 +35,9 @@ namespace {
 namespace R  = ue_wrap::reflection;
 namespace PT = coop::prop_element_tracker;
 
+// Sentinel: "no active verb eid" for the request-verb bracket handshake.
+constexpr uint32_t kNoVerbEid = kNoVerbEid;
+
 // Resolved kerfur refs (pushed by kerfur_convert::Install: SetClasses every
 // attempt, SetVerbs at the success site; read-only on the game thread here).
 void* g_kerfurNpcClass  = nullptr;
@@ -126,12 +129,12 @@ void* PickDropPropFn(void* cls) {
 // an unconditional write left one stale eid per host-OWN toggle with nobody to consume it -- a
 // later request whose recycled eid matched would skip its converge AND its reject echo). Verbs
 // are synchronous on the GT, so single slots cannot be raced.
-uint32_t g_requestVerbEid   = 0xFFFFFFFFu;  // eid of the request-path verb currently executing; GT-only
-uint32_t g_seamConvergedEid = 0xFFFFFFFFu;  // set by the capture inside that bracket; GT-only
+uint32_t g_requestVerbEid   = kNoVerbEid;  // eid of the request-path verb currently executing; GT-only
+uint32_t g_seamConvergedEid = kNoVerbEid;  // set by the capture inside that bracket; GT-only
 
 bool ConsumeSeamConverged(uint32_t eid) {
     if (g_seamConvergedEid != eid) return false;
-    g_seamConvergedEid = 0xFFFFFFFFu;
+    g_seamConvergedEid = kNoVerbEid;
     return true;
 }
 
@@ -335,7 +338,7 @@ void OnConvertRequest(const coop::net::KerfurConvertPayload& payload,
         // ConvergeAfterConversion would spuriously fail and release the eid with a WARN).
         g_requestVerbEid = static_cast<uint32_t>(eid);
         R::CallFunction(actor, g_spawnKerfuroFn, frame);
-        g_requestVerbEid = 0xFFFFFFFFu;
+        g_requestVerbEid = kNoVerbEid;
         if (ConsumeSeamConverged(static_cast<uint32_t>(eid))) {
             UE_LOGI("kerfur_convert: turn-on eid=%u already converged at the destroy edge (first refusal) -- request satisfied",
                     payload.elementId);
@@ -349,7 +352,7 @@ coop::element::ElementId ActiveRequestVerbEid() {
     // GT-only marker set around the OnConvertRequest CallFunction bracket (above). The 0x45
     // assembler is blind to the CallFunction dispatch, so it consults this to recognize the
     // host-exec-client-request bracket as a SECOND capture scope. See the header.
-    return (g_requestVerbEid == 0xFFFFFFFFu)
+    return (g_requestVerbEid == kNoVerbEid)
                ? coop::element::kInvalidId
                : static_cast<coop::element::ElementId>(g_requestVerbEid);
 }
@@ -383,8 +386,8 @@ void SetVerbs(void* dropPropFnBase, void* dropPropFnCol, void* dropPropFnColGame
 }
 
 void OnDisconnect() {
-    g_seamConvergedEid = 0xFFFFFFFFu;  // GT-only destroy-edge converge handshake (take-9)
-    g_requestVerbEid   = 0xFFFFFFFFu;
+    g_seamConvergedEid = kNoVerbEid;  // GT-only destroy-edge converge handshake (take-9)
+    g_requestVerbEid   = kNoVerbEid;
 }
 
 }  // namespace coop::kerfur_convert_host
