@@ -46,12 +46,20 @@ constexpr uint64_t kSweepMs = 250;
 
 // A container with more records than this is not shipped: the blob would approach the chunk
 // transport ceiling and a truncated blob is a silent lie. Real containers hold single digits.
-constexpr size_t kMaxRecordsPerContainer = 512;
+// v139: lowered from 512 to 128. Largest measured container = 43 records (2026-07-22 smoke).
+// 128 * ~200 bytes avg = ~25KB, safely under the 56KB MaxBlobBytes ceiling.
+constexpr size_t kMaxRecordsPerContainer = 128;
 
 // Increment 2: depth cap for nested container transitive walk. A container inside a container
 // inside a container (depth 3) is already unusual; deeper nesting is a sign of data corruption
 // or adversarial input. The cap bounds both the recursion depth and the total blob size.
 constexpr int kMaxDepth = 3;
+
+// Per-sweep byte budget: caps total bytes sent in one DrainDirty sweep to prevent
+// burst bandwidth spikes when many containers are dirty simultaneously. At 250ms
+// sweep interval, 4096 B/sweep = ~16 KB/s sustained. Remaining dirty eids retry
+// next sweep.
+constexpr size_t kMaxBytesPerSweep = 4096;
 
 std::atomic<coop::net::Session*> g_session{nullptr};
 
@@ -444,10 +452,12 @@ uint64_t ContentHash(uint32_t eid, const std::vector<SR::SaveRecord>& recs) {
 // ---- host: broadcast one container -----------------------------------------------------------
 
 // Returns false if the send was refused (caller arms the retry).
+// If bytesOut is non-null, writes the blob size on a successful send.
 //
 // v125: run by BOTH peers. On the host `toSlot < 0` fans out to everyone; on a client the same
 // call reaches the host alone (a client's only peer), which is exactly the author->arbiter edge.
-bool BroadcastContainer(coop::net::Session* s, uint32_t eid, void* inv, int toSlot, bool force) {
+bool BroadcastContainer(coop::net::Session* s, uint32_t eid, void* inv, int toSlot, bool force,
+                        size_t* bytesOut = nullptr) {
     std::vector<SR::SaveRecord> recs;
     // Increment 2: depth=0 for top-level read; visited set tracks eids to prevent cycles.
     std::set<uint32_t> visited;
@@ -478,6 +488,7 @@ bool BroadcastContainer(coop::net::Session* s, uint32_t eid, void* inv, int toSl
         : coop::blob_chunks::SendBlobToSlot(s, toSlot, coop::net::ReliableKind::ContainerContents,
                                             g_nextSeq++, blob);
     if (ok) {
+        if (bytesOut) *bytesOut = blob.size();
         if (toSlot < 0) g_sentHash[eid] = h;  // only a FAN-OUT establishes what every peer has
         // ...but ANY publication -- fan-out or a targeted connect seed -- establishes what the
         // RECEIVER was told, and that is the baseline a later client write must be judged against.
@@ -529,14 +540,26 @@ void DrainDirty(coop::net::Session* s) {
     std::set<uint32_t> dirty;
     dirty.swap(g_dirty);
 
+    size_t totalBytesSent = 0;
     for (uint32_t eid : dirty) {
+        // Per-sweep byte budget: stop draining when the budget is exhausted.
+        // Remaining dirty eids stay in g_dirty and retry next sweep.
+        if (totalBytesSent >= kMaxBytesPerSweep) {
+            g_dirty.insert(eid);
+            continue;
+        }
         // Resolve FORWARD from the stable eid every sweep: a container destroyed since the edge
         // simply stops resolving, so there is no stale pointer to deref.
         void* actor = LivePropActor(eid);
         if (!actor || !IsContainerActor(actor)) continue;
         void* inv = InventoryOf(actor);
         if (!inv || !IsWorldContainerInventory(inv)) continue;   // BOUNDARY 1 (fail-closed)
-        if (!BroadcastContainer(s, eid, inv, -1, /*force=*/false)) g_retry.insert(eid);
+        size_t bytes = 0;
+        if (!BroadcastContainer(s, eid, inv, -1, /*force=*/false, &bytes)) {
+            g_retry.insert(eid);
+        } else {
+            totalBytesSent += bytes;
+        }
     }
 }
 
