@@ -59,7 +59,7 @@ std::atomic<bool> g_ready{false};  // the request latch (flips with the residual
 // identity) still rides the ordinary keyed ExpressSpawnedProp -> PropSpawn. Game thread.
 
 // Find the host's untracked, live kerfur actor of the requested form nearest (x,y,z): the verb's
-// freshly-spawned new-form body. UNTRACKED = not yet a host element (g_actorToNpcId / the prop
+// freshly-spawned new-form body. UNTRACKED = not yet a host element (Registry::m_byActor / the prop
 // tracker) -- the verb output, before we register it. One cold GUObjectArray walk per conversion.
 void* FindNewFormKerfurActor(bool wantNpc, float x, float y, float z) {
     void* base = wantNpc ? g_kerfurNpcClass : g_kerfurPropClass;

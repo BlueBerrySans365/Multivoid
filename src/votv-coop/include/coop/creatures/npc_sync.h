@@ -91,25 +91,22 @@ void MarkIncomingNpcSpawn(void* npcClass);
 // through and produce a rogue non-suppressed duplicate.
 void ClearIncomingNpcSpawn();
 
-// Reverse lookup: live (or just-destroyed) NPC actor -> ElementId, from the
-// same map the K2_DestroyActor PRE gates on. kInvalidId when untracked.
-// Mutex-guarded; safe from any thread (coop::kerfur_convert reads it inside
-// a ProcessEvent interceptor on a parallel-anim worker).
+// Reverse lookup: live (or just-destroyed) NPC actor -> ElementId, delegated to
+// Registry::Get().EidForActor() (which reads Registry::m_byActor). kInvalidId
+// when untracked. Safe from any thread.
 coop::element::ElementId GetNpcIdForActor(void* actor);
 
-// Insert/overwrite the live-actor -> ElementId reverse-map entry GetNpcIdForActor reads. The
-// extracted world-enum (coop/npc_world_enum) calls this to publish a pre-existing world NPC it
-// registered (alloc + bind) into the same host reverse map the POST observer + K2_DestroyActor PRE
-// use -- so the destroy observer closes its lifecycle exactly like a fresh spawn. Mutex-guarded;
-// game thread (the world-enum walk runs on it). No-op when `actor` is null.
+// No-op. The reverse-map is now Registry::m_byActor, maintained automatically
+// by Element::SetActor -> NoteActorRebind. Retained as a public API for backward
+// compatibility with npc_world_enum callers. No-op when `actor` is null.
 void MapActorToNpcId(void* actor, coop::element::ElementId eid);
 
 // Explicit destroy-sync for an NPC actor whose K2_DestroyActor our PRE
 // observer could NOT see (BP-internal by-name call -- kerfurOmega_C::
-// dropKerfurProp, v67). Exactly the PRE body: erase the reverse-map entry,
-// drain the Element (deferred), broadcast EntityDestroy. `actor` is used as
-// a map key only (never dereferenced) -- callable on a PendingKill/purged
-// pointer; no-ops when the actor is untracked (double-call safe).
+// dropKerfurProp, v67). Drains the Element (deferred) via RetireMirror,
+// broadcasts EntityDestroy. `actor` is used as an EidForActor key only
+// (never dereferenced) -- callable on a PendingKill/purged pointer;
+// no-ops when the actor is untracked (double-call safe).
 void SyncDestroyedNpcActor(void* actor);
 
 // EID-keyed variant for the pose-walk dead-actor retire (2026-07-03: the wisp's
@@ -178,7 +175,7 @@ void TickPoseStream();
 // broadcast + the host POST observer BINDING the actor (log "[host POST]: bound
 // actor", POST-bound=1) + CLIENT mirror Install all work end-to-end, mirror at
 // the host's exact spawn loc. host-side NPC DESTROY-sync IS now exercised by a
-// dev-spawn (the bound actor is in g_actorToNpcId, so K2_DestroyActor PRE fires).
+// dev-spawn (the bound actor is in Registry::m_byActor, so K2_DestroyActor PRE fires).
 //
 // HISTORY (resolved): a 2026-05-30 12:58 note here claimed NpcSpawn_POST did NOT
 // fire for a reflection-initiated BeginDeferred. That was the dual-POST-observer
