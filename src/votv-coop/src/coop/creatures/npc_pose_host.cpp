@@ -32,6 +32,7 @@
 #include <cmath>
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace coop::npc_sync {
@@ -42,6 +43,37 @@ namespace R = ue_wrap::reflection;
 // The single host/mirror Npc set (same template singleton npc_sync.cpp +
 // npc_mirror.cpp wrap; MirrorManager<Npc>::Instance() owns the storage).
 using coop::element::NpcMirrors;   // canonical accessor (coop/element/mirror_managers.h)
+
+// v22 NPC health sync: read the `health` / `maxHealth` fields via reflection.
+// Per-class offset discovery (same pattern as coop/dev/object_overlay.cpp).
+// Returns the quantized 0..255 fraction; defaults to 255 (full) on read failure
+// so a missing health field doesn't show an empty bar on the mirror.
+struct HealthOff { int health = -1; int maxHealth = -1; };
+std::unordered_map<void*, HealthOff> g_healthOffCache;
+
+uint8_t ReadNpcHealthFrac(void* actor) {
+    if (!actor) return 255;
+    void* cls = R::ClassOf(actor);
+    if (!cls) return 255;
+    auto it = g_healthOffCache.find(cls);
+    if (it == g_healthOffCache.end()) {
+        HealthOff ho;
+        ho.health    = R::FindPropertyOffset(cls, L"health");
+        ho.maxHealth = R::FindPropertyOffset(cls, L"maxHealth");
+        it = g_healthOffCache.emplace(cls, ho).first;
+    }
+    if (it->second.health < 0) return 255;  // no health field on this class
+    const float cur = *reinterpret_cast<const float*>(
+        reinterpret_cast<const uint8_t*>(actor) + it->second.health);
+    if (cur <= 0.f) return 0;
+    float maxH = 100.f;  // default max if not found
+    if (it->second.maxHealth >= 0) {
+        maxH = *reinterpret_cast<const float*>(
+            reinterpret_cast<const uint8_t*>(actor) + it->second.maxHealth);
+        if (maxH <= 0.f) maxH = 100.f;
+    }
+    return coop::net::QuantizeUnitFraction(cur / maxH);
+}
 
 }  // namespace
 
@@ -206,6 +238,11 @@ void TickPoseStream() {
             snap.stateBits |= coop::net::kEntityPoseBitHasKerfurState;
             if (kSpooky) snap.stateBits |= coop::net::kEntityPoseBitKerfurSpooky;
         }
+        // v22 NPC health sync: read the NPC's health fraction for display on the
+        // client mirror. Quantized 0..255 (255 = full health). DISPLAY-ONLY on
+        // the client -- never writes save state. Per-class offset discovery via
+        // reflection (same pattern as coop/dev/object_overlay.cpp).
+        snap.healthFrac = ReadNpcHealthFrac(actor);
         batch.push_back(snap);
     }
     if (!connected) return;  // publish is peer-dependent

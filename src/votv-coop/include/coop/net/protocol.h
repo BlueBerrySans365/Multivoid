@@ -2916,7 +2916,7 @@ struct EntityPoseSnapshot {
                           //      AnimBP state machine on the parked mirror (which can't run its own AI). 0 when bit3 clear.
     uint8_t  kerfFace;    // 1  -- v74: kerfur faceMaterialIndex (@ "faceMaterialIndex"); VALID iff bit3. The mirror's
                           //      face actor (kerfusFace) is otherwise frozen (its timer_face is neutralized at park).
-    uint8_t  _pad;        // 1  -- 4-byte alignment
+    uint8_t  healthFrac;  // 1  -- v22: NPC health / maxHealth, quantized 0..255 (255 = full). DISPLAY-ONLY on client.
 };
 static_assert(sizeof(EntityPoseSnapshot) == 44, "EntityPoseSnapshot must be 44 bytes");
 

@@ -22,6 +22,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <unordered_map>
 
 namespace coop::element {
 namespace {
@@ -41,6 +42,36 @@ float OffsetDegrees(float fromDeg, float toDeg) {
     if (d > 180.f)  d -= 360.f;
     if (d < -180.f) d += 360.f;
     return d;
+}
+
+// v22 NPC health sync: write the mirrored health fraction to the NPC's `health` field.
+// DISPLAY-ONLY on the client -- never writes save state. Per-class offset discovery via
+// reflection (same pattern as npc_pose_host.cpp's ReadNpcHealthFrac).
+struct HealthOff { int health = -1; int maxHealth = -1; };
+std::unordered_map<void*, HealthOff> g_healthOffCache;
+
+void WriteNpcHealth(void* actor, uint8_t healthFrac) {
+    if (!actor) return;
+    void* cls = R::ClassOf(actor);
+    if (!cls) return;
+    auto it = g_healthOffCache.find(cls);
+    if (it == g_healthOffCache.end()) {
+        HealthOff ho;
+        ho.health    = R::FindPropertyOffset(cls, L"health");
+        ho.maxHealth = R::FindPropertyOffset(cls, L"maxHealth");
+        it = g_healthOffCache.emplace(cls, ho).first;
+    }
+    if (it->second.health < 0) return;  // no health field on this class
+    // Dequantize the 0..255 fraction back to a health value.
+    float maxH = 100.f;
+    if (it->second.maxHealth >= 0) {
+        maxH = *reinterpret_cast<const float*>(
+            reinterpret_cast<const uint8_t*>(actor) + it->second.maxHealth);
+        if (maxH <= 0.f) maxH = 100.f;
+    }
+    const float health = coop::net::DequantizeUnitFraction(healthFrac) * maxH;
+    *reinterpret_cast<float*>(
+        reinterpret_cast<uint8_t*>(actor) + it->second.health) = health;
 }
 
 constexpr int   kInterpWindowMs  = 75;     // same as RemotePlayer (the proven jitter window)
@@ -73,6 +104,9 @@ void Npc::SetTargetNpcPose(const coop::net::EntityPoseSnapshot& snap) {
         kerfState_  = snap.kerfState;
         kerfSpooky_ = (snap.stateBits & coop::net::kEntityPoseBitKerfurSpooky) != 0;
     }
+    // v22 NPC health: store the quantized health fraction for display on the mirror.
+    // DISPLAY-ONLY -- never writes save state on the client.
+    healthFrac_ = snap.healthFrac;
 
     // First packet OR a teleport (error beyond the snap threshold) -> SNAP, no LERP across.
     const float dx = tgtPos.X - curPos_.X, dy = tgtPos.Y - curPos_.Y, dz = tgtPos.Z - curPos_.Z;
@@ -170,6 +204,10 @@ void Npc::ApplyToEngine() {
     // state machine matches the host (the mirror runs no AI -> it can't pick its own). Class-gated
     // inside -> safe no-op on non-kerfur NPCs.
     if (hasKerfState_) ue_wrap::kerfur::DriveKerfurState(actor, kerfState_, kerfSpooky_);
+    // v22 NPC health sync: write the mirrored health fraction to the NPC's health field.
+    // DISPLAY-ONLY on the client -- never writes save state. Enables visual feedback (damage
+    // flash, death animation) on the mirror when the host NPC takes damage.
+    WriteNpcHealth(actor, healthFrac_);
 }
 
 }  // namespace coop::element

@@ -87,6 +87,7 @@ private:
     bool             dirty_          = true;   // unapplied change to push to the engine
     bool             isWispMirror_   = false;  // wisp_C mirror: replay the landing edge (fade-in)
     bool             wispLanded_     = false;  //   ... one-shot latch (drive succeeded)
+    uint8_t          healthFrac_     = 255;    // v22: NPC health 0..255 (display-only on client mirror)
 };
 
 }  // namespace coop::element
