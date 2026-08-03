@@ -2799,6 +2799,7 @@ static_assert(sizeof(PoseSnapshot) == 32, "PoseSnapshot must be 32 bytes");
 inline constexpr uint8_t kStateBitInAir    = 0x01;
 inline constexpr uint8_t kStateBitRagdoll  = 0x02;  // v20 Inc2b: source is ragdolled (faint/manual-C/KO, NOT dead)
 inline constexpr uint8_t kStateBitCrouched = 0x04;  // v22: source ACharacter is crouched (bIsCrouched)
+inline constexpr uint8_t kStateBitSitting  = 0x08;  // v22: source mainPlayer_C is sitting (sittingOn != null)
 
 // v19: VOTV vital scalars (food, sleep, and the default maxHealth) top out at
 // 100.0. `health` is normalized by the per-peer `maxHealth` (upgrades/story can

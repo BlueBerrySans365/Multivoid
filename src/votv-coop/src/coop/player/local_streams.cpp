@@ -146,6 +146,18 @@ bool ReadLocalPose(void* local, void* controller, coop::net::PoseSnapshot& out) 
     if (ue_wrap::puppet::ReadCharacterIsCrouched(local)) {
         out.stateBits |= coop::net::kStateBitCrouched;
     }
+    // v22: piggyback the LOCAL player's sitting state. mainPlayer_C::sittingOn
+    // is a pointer (non-null when sitting on a seat/wisp/ATV). Same cost class
+    // as the crouch read (one deref). The receiver uses this to disable CMC
+    // drive while the puppet is seated.
+    {
+        constexpr size_t kSittingOnOff = 0x0A80;  // mainPlayer_C::sittingOn
+        void* sittingOn = *reinterpret_cast<void**>(
+            reinterpret_cast<uint8_t*>(local) + kSittingOnOff);
+        if (sittingOn) {
+            out.stateBits |= coop::net::kStateBitSitting;
+        }
+    }
     // v19: piggyback the LOCAL player's vitals (health fraction + food + sleep)
     // in the 3 bytes that were `_pad` -- ZERO wire-size change. ue_wrap::vitals
     // reads THIS machine's UsaveSlot_C (one per machine), so the values are

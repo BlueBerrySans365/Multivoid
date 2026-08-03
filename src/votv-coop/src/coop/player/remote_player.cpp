@@ -668,6 +668,12 @@ void RemotePlayer::ApplyToEngine() {
     // CMC offsets stay in the wrapper; coop/ sees only the typed API.
     // (RE: research/findings/player-puppet/votv-local-anim-drive-RE-2026-05-27.md.)
     {
+        // v22 sitting sync: when the source is sitting, skip the CMC velocity/
+        // movement-mode drive. The puppet's position is still streamed (it sits
+        // at the seat's world location), but the CMC should NOT animate walk/fall
+        // transitions while the player is seated. The footstep stride is also
+        // suppressed (the grounded/speed check in StepDue handles this).
+        const bool sitting = (curStateBits_ & coop::net::kStateBitSitting) != 0;
         const float yawRad = curYaw_ * 0.01745329252f;  // PI/180
         const ue_wrap::FVector vel{
             std::cos(yawRad) * curSpeed_,
@@ -675,13 +681,15 @@ void RemotePlayer::ApplyToEngine() {
             0.f,
         };
         const bool inAir = (curStateBits_ & coop::net::kStateBitInAir) != 0;
-        Pup::DriveCharacterMovement(actor_, vel, inAir);
-        // Run-loudness parity: lib_C::step's volume reads CMC.MaxWalkSpeed
-        // (the SETTING), which the parked puppet never updates -- mirror the
-        // native sprint knob from the streamed speed. Threshold = the same
-        // run boundary the stride emitter uses.
-        Pup::DriveSprintWalkSpeed(
-            actor_, curSpeed_ > coop::puppet_footsteps::Stride::kRunSpeedCmS);
+        if (!sitting) {
+            Pup::DriveCharacterMovement(actor_, vel, inAir);
+            // Run-loudness parity: lib_C::step's volume reads CMC.MaxWalkSpeed
+            // (the SETTING), which the parked puppet never updates -- mirror the
+            // native sprint knob from the streamed speed. Threshold = the same
+            // run boundary the stride emitter uses.
+            Pup::DriveSprintWalkSpeed(
+                actor_, curSpeed_ > coop::puppet_footsteps::Stride::kRunSpeedCmS);
+        }
         // v22 crouch sync: drive the puppet's capsule resize + bIsCrouched
         // flag from the streamed stateBits bit 2. DriveCrouchState is a
         // no-op when the crouch state hasn't changed (edge detector).
