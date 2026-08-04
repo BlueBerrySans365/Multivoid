@@ -312,6 +312,7 @@ void RemotePlayer::SetTargetPose(const coop::net::PoseSnapshot& snap) {
         curHeadYawDelta_ = snap.headYawDelta;
         curSpeed_ = snap.speed;
         curStateBits_ = snap.stateBits;
+        wasSitting_ = (snap.stateBits & coop::net::kStateBitSitting) != 0;
         bodyYaw_.Reset(snap.yaw);  // presentation yaw snaps with the real pose
         targetPos_ = tgtPos;
         targetYaw_ = snap.yaw;
@@ -337,6 +338,7 @@ void RemotePlayer::SetTargetPose(const coop::net::PoseSnapshot& snap) {
         curHeadYawDelta_ = snap.headYawDelta;
         curSpeed_ = snap.speed;
         curStateBits_ = snap.stateBits;
+        wasSitting_ = (snap.stateBits & coop::net::kStateBitSitting) != 0;
         bodyYaw_.Reset(snap.yaw);  // a teleport re-bases the presentation yaw too
         targetPos_ = tgtPos;
         targetYaw_ = snap.yaw;
@@ -541,6 +543,7 @@ void RemotePlayer::Destroy() {
     dirty_ = false;
     bodyYaw_.Reset(0.f);    // clears the latch + dt clock; re-seeded at the next Spawn
     wasCrouched_ = false;   // v22: clear crouch state on destroy
+    wasSitting_ = false;    // Phase 6F: clear sitting state on destroy
     hurtFlashEndMs_ = 0;         // v20 Inc3: clear the hurt-flash (nameplate already unregistered)
     hurtFlashActive_ = false;
     hurtSavedMaterials_.clear(); // the mesh died with the actor -- no restore needed, drop stale ptrs
@@ -668,12 +671,37 @@ void RemotePlayer::ApplyToEngine() {
     // CMC offsets stay in the wrapper; coop/ sees only the typed API.
     // (RE: research/findings/player-puppet/votv-local-anim-drive-RE-2026-05-27.md.)
     {
-        // v22 sitting sync: when the source is sitting, skip the CMC velocity/
-        // movement-mode drive. The puppet's position is still streamed (it sits
-        // at the seat's world location), but the CMC should NOT animate walk/fall
-        // transitions while the player is seated. The footstep stride is also
-        // suppressed (the grounded/speed check in StepDue handles this).
+        // Phase 6F seat attachment: when the source is sitting, freeze the
+        // puppet at the seat's world position with CMC in MOVE_None. On the
+        // sit-down edge, snap the puppet to the target position (skip interp)
+        // and explicitly set MOVE_None so the engine doesn't apply gravity or
+        // movement logic. On the stand-up edge, restore MOVE_Walking so the
+        // puppet can move again on the next pose. While sitting, suppress CMC
+        // velocity/movement-mode drive and footstep stride entirely.
         const bool sitting = (curStateBits_ & coop::net::kStateBitSitting) != 0;
+        const bool justSat = sitting && !wasSitting_;
+        const bool justStood = !sitting && wasSitting_;
+        wasSitting_ = sitting;
+
+        if (justSat) {
+            // Snap the puppet to the seat position instantly (skip the interp
+            // window). The seat's world position is already in curPos_ from the
+            // last SetTargetPose, but there may be an open interp window from
+            // the standing pose -- close it so the puppet doesn't drift.
+            curPos_ = targetPos_;
+            window_.Close();
+            dirty_ = true;
+
+            // Set CMC to MOVE_None to freeze the puppet at the seat.
+            // Clear velocity so the AnimBP shows idle (no residual walk).
+            Pup::DriveSitState(actor_, true);
+        } else if (justStood) {
+            // Restore CMC to MOVE_Walking so the puppet can move again.
+            // Zero velocity; the next pose's DriveCharacterMovement will
+            // set the correct velocity for locomotion.
+            Pup::DriveSitState(actor_, false);
+        }
+
         const float yawRad = curYaw_ * 0.01745329252f;  // PI/180
         const ue_wrap::FVector vel{
             std::cos(yawRad) * curSpeed_,
@@ -683,10 +711,6 @@ void RemotePlayer::ApplyToEngine() {
         const bool inAir = (curStateBits_ & coop::net::kStateBitInAir) != 0;
         if (!sitting) {
             Pup::DriveCharacterMovement(actor_, vel, inAir);
-            // Run-loudness parity: lib_C::step's volume reads CMC.MaxWalkSpeed
-            // (the SETTING), which the parked puppet never updates -- mirror the
-            // native sprint knob from the streamed speed. Threshold = the same
-            // run boundary the stride emitter uses.
             Pup::DriveSprintWalkSpeed(
                 actor_, curSpeed_ > coop::puppet_footsteps::Stride::kRunSpeedCmS);
         }

@@ -542,6 +542,18 @@ void DriveNpcMovementMode(void* actor, uint8_t movementMode, float maxWalkSpeed)
     }
 }
 
+void DriveSitState(void* actor, bool sitting) {
+    if (!actor || !R::IsLive(actor)) return;
+    void* cmc = ReadPtr(actor, P::off::ACharacter_CharacterMovement);
+    if (!cmc || !R::IsLive(cmc)) return;
+    constexpr size_t kCMC_MovementMode = 0x168;
+    constexpr size_t kCMC_Velocity = 0xC4;
+    const uint8_t mode = sitting ? uint8_t{0} /* MOVE_None */
+                                : uint8_t{1} /* MOVE_Walking */;
+    WriteAt<uint8_t>(cmc, kCMC_MovementMode, mode);
+    WriteAt<FVector>(cmc, kCMC_Velocity, {});
+}
+
 void DisableCharacterTicks(void* actor) {
     if (!actor || !R::IsLive(actor)) return;
     DisableMovementTick(actor);

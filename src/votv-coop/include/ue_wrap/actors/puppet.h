@@ -207,6 +207,13 @@ float ReadCharacterMaxWalkSpeed(void* actor);
 // actor or null/dead CMC. Game thread only.
 void DriveNpcMovementMode(void* actor, uint8_t movementMode, float maxWalkSpeed);
 
+// Phase 6F seat attachment: write CMC MovementMode + Velocity for a seated
+// puppet. When sitting=true: sets MOVE_None (0) + zeros velocity to freeze
+// the puppet at the seat position. When sitting=false: sets MOVE_Walking (1)
+// + zeros velocity (the next DriveCharacterMovement call restores proper
+// velocity). No-op on null/dead actor. Game thread only.
+void DriveSitState(void* actor, bool sitting);
+
 // ---- kerfur head-look (v39) ----------------------------------------------
 // The kerfur AnimBP (UAnimBlueprint_kerfurOmega_regular_C, shared by NPCs + player
 // puppets) drives the head/neck via two FAnimNode_LookAt nodes that aim at the AnimBP

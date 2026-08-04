@@ -322,6 +322,10 @@ private:
     // is a no-op when the state hasn't changed, so we track the last
     // applied crouch state to avoid redundant writes each tick.
     bool             wasCrouched_ = false;
+    // Phase 6F seat attachment: edge detector for sit-down/stand-up transitions.
+    // On sit-down: snap puppet to seat position, set CMC to MOVE_None.
+    // On stand-up: restore CMC to MOVE_Walking.
+    bool             wasSitting_ = false;
 
     // Phase 5F flashlight proxy keep-alive: cached light state for periodic
     // re-apply that prevents UE4 from destroying the light proxy at distance.
