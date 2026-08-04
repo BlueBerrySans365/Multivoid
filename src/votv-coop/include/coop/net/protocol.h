@@ -4042,7 +4042,7 @@ struct NpcStatePayload {
     uint8_t  animVariant;     // 1  -- host-rolled animation variant (setRandomAnimation)
     uint8_t  summonState;     // 1  -- zombie_skerfuro summoning state
 };
-static_assert(sizeof(NpcStatePayload) == 18, "NpcStatePayload must be 18 bytes");
+static_assert(sizeof(NpcStatePayload) == 16, "NpcStatePayload must be 16 bytes");
 static_assert(sizeof(NpcStatePayload) <= 256 - 20 - 8,
               "NpcStatePayload must fit in one reliable datagram (kMaxReliablePayload)");
 

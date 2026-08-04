@@ -494,12 +494,8 @@ void OnNpcState(const coop::net::NpcStatePayload& payload) {
 
     // Store the host-authoritative state on the Element. The client suppresses
     // local AI for these fields -- only the host's values are used.
-    el->npcAliveState_  = payload.aliveState;
-    el->npcAiTargetEid_ = payload.aiTargetEid;
-    el->npcAiPhase_     = payload.aiPhaseFloat;
-    el->npcSkinVariant_ = payload.skinVariant;
-    el->npcAnimVariant_ = payload.animVariant;
-    el->npcSummonState_ = payload.summonState;
+    el->ApplyNpcState(payload.aliveState, payload.aiTargetEid, payload.aiPhaseFloat,
+                      payload.skinVariant, payload.animVariant, payload.summonState);
 
     // Log state changes for verification.
     if (payload.aliveState > 0) {

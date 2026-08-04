@@ -36,7 +36,7 @@ namespace R  = ue_wrap::reflection;
 namespace PT = coop::prop_element_tracker;
 
 // Sentinel: "no active verb eid" for the request-verb bracket handshake.
-constexpr uint32_t kNoVerbEid = kNoVerbEid;
+constexpr uint32_t kNoVerbEid = 0xFFFFFFFF;
 
 // Resolved kerfur refs (pushed by kerfur_convert::Install: SetClasses every
 // attempt, SetVerbs at the success site; read-only on the game thread here).

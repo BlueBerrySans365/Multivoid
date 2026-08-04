@@ -60,6 +60,26 @@ public:
     // npc_mirror at materialization for exactly class wisp_C.
     void MarkWispMirror() { isWispMirror_ = true; }
 
+    // v139 NpcState: apply the host-authoritative state payload fields.
+    // Called by npc_mirror::OnNpcState on the client. Game thread only.
+    void ApplyNpcState(uint8_t aliveState, uint32_t aiTargetEid, float aiPhase,
+                       uint8_t skinVariant, uint8_t animVariant, uint8_t summonState) {
+        npcAliveState_  = aliveState;
+        npcAiTargetEid_ = aiTargetEid;
+        npcAiPhase_     = aiPhase;
+        npcSkinVariant_ = skinVariant;
+        npcAnimVariant_ = animVariant;
+        npcSummonState_ = summonState;
+    }
+
+    // Accessors for NPC state fields (read-only from outside).
+    uint8_t  GetAliveState()  const { return npcAliveState_; }
+    uint32_t GetAiTargetEid() const { return npcAiTargetEid_; }
+    float    GetAiPhase()     const { return npcAiPhase_; }
+    uint8_t  GetSkinVariant() const { return npcSkinVariant_; }
+    uint8_t  GetAnimVariant() const { return npcAnimVariant_; }
+    uint8_t  GetSummonState() const { return npcSummonState_; }
+
 private:
     void AdvanceInterp();   // advance the open window to now (mirrors RemotePlayer::AdvanceInterp)
     void ApplyToEngine();   // SetActorLocation + SetActorRotation + DriveCharacterMovement

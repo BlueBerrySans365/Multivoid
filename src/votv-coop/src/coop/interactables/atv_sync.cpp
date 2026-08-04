@@ -16,6 +16,7 @@
 #include "coop/net/session.h"
 #include "coop/net/wire_key_util.h"  // WireKeyFromString / StringFromWireKey / FnvKey (shared)
 #include "coop/player/players_registry.h"   // Registry::Local / LocalPeerId / kMaxPeers
+#include "coop/session/player_handshake.h"  // NicknameForSlot
 
 #include "ue_wrap/devices/atv.h"
 #include "ue_wrap/engine/engine.h"          // ReadMainPlayerGrabState (grabber authority) + Get/SetActorRootPhysicsVelocity (release)
@@ -543,8 +544,8 @@ void OnAtvOccupied(const coop::net::AtvOccupiedPayload& payload, uint8_t /*sende
     // Resolve the driver's name from the roster.
     std::wstring driverName = L"another player";
     if (payload.driverSlot < coop::net::kMaxPeers) {
-        auto nameOpt = coop::players::Registry::Get().NameForSlot(payload.driverSlot);
-        if (nameOpt && !nameOpt->empty()) driverName = *nameOpt;
+        const auto& name = coop::player_handshake::NicknameForSlot(payload.driverSlot);
+        if (!name.empty()) driverName = name;
     }
     UE_LOGI("atv: OnAtvOccupied key='%ls' driverSlot=%d driver='%ls' -- showing toast",
             key.c_str(), payload.driverSlot, driverName.c_str());
@@ -584,7 +585,7 @@ void Tick() {
     auto* s = g_session.load(std::memory_order_acquire);
 
     const auto nowTp = std::chrono::steady_clock::now();
-    if (nowTp - g_lastRebuild >= kRebuildThrottle) {
+    if (nowTp - g_lastRebuild >= kRebuildThrottleActive) {
         g_lastRebuild = nowTp;
         ue_wrap::ScopedWalkTimer _wt("atv:RebuildIndex");  // logs only the rare ~5min full safety
         RebuildIndex();   // L5: INCREMENTAL -- tail-scan + a rare full safety (no 237k walk)

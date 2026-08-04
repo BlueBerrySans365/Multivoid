@@ -314,11 +314,11 @@ void Tick() {
     if (!IsHost()) return;
 
     static uint64_t g_nextCheck = 0;
-    const uint64_t now = static_cast<uint64_t>(
+    const uint64_t nowHost = static_cast<uint64_t>(
         std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count());
-    if (now < g_nextCheck) return;
-    g_nextCheck = now + 5000;
+    if (nowHost < g_nextCheck) return;
+    g_nextCheck = nowHost + 5000;
 
     auto* s = g_session.load(std::memory_order_acquire);
     if (!s || !s->connected()) return;
