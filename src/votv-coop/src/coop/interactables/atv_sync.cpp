@@ -10,6 +10,7 @@
 
 #include "coop/interactables/atv_sync.h"
 
+#include "coop/comms/chat_feed.h"                 // Push("ATV occupied by ...") toast
 #include "coop/element/lerp_window.h"
 #include "coop/net/protocol.h"
 #include "coop/net/session.h"
@@ -547,7 +548,8 @@ void OnAtvOccupied(const coop::net::AtvOccupiedPayload& payload, uint8_t /*sende
     }
     UE_LOGI("atv: OnAtvOccupied key='%ls' driverSlot=%d driver='%ls' -- showing toast",
             key.c_str(), payload.driverSlot, driverName.c_str());
-    // TODO: show in-game toast "ATV occupied by [driverName]" (requires UI integration)
+    coop::chat_feed::Push(L"ATV occupied by " + driverName,
+                          coop::chat_feed::Keep::Transient);
 }
 
 void QueueConnectBroadcastForSlot(int peerSlot) {
