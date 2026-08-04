@@ -159,7 +159,7 @@ void TickPoseStream() {
     static std::vector<coop::net::EntityPoseSnapshot> batch;
     batch.clear();
 
-    // 2026-07-03: fair-share rotation for >kMaxNpcBatchEntries tracked NPCs (the 32-wisp swarm
+    // 2026-07-03: fair-share rotation for >kMaxNpcBatchEntries tracked NPCs (the wisp swarm
     // overflows the 31-entry MTU cap). Without it Snapshot's stable order starves the SAME tail
     // NPCs every tick (frozen mirrors); rotating the start index spreads the loss evenly
     // (~31/N of ticks each -- the MTA far-sync rotation shape). No wire change.
@@ -203,6 +203,10 @@ void TickPoseStream() {
         snap.yaw = ue_wrap::NormalizeAxis(rot.Yaw);
         snap.speed = std::sqrt(vel.X * vel.X + vel.Y * vel.Y);  // horizontal velocity magnitude
         snap.stateBits = ue_wrap::puppet::ReadCharacterIsFalling(actor) ? coop::net::kStateBitInAir : uint8_t{0};
+        // v139: read the full CMC MovementMode + MaxWalkSpeed so the client mirror's
+        // AnimBP state machine + locomotion blend match the host NPC exactly.
+        snap.movementMode = ue_wrap::puppet::ReadCharacterMovementMode(actor);
+        snap.maxWalkSpeed = ue_wrap::puppet::ReadCharacterMaxWalkSpeed(actor);
         // v39 head-look: read the kerfur AnimBP's resolved `lookAt` WORLD target (the head/neck
         // FAnimNode_LookAt aim point). Only kerfur-family NPCs carry it (ReadKerfurLookAt is
         // class-gated -> false for non-kerfur NPCs); the bit tells the client when lookAt is valid.

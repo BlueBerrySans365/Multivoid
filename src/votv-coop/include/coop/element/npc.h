@@ -88,6 +88,16 @@ private:
     bool             isWispMirror_   = false;  // wisp_C mirror: replay the landing edge (fade-in)
     bool             wispLanded_     = false;  //   ... one-shot latch (drive succeeded)
     uint8_t          healthFrac_     = 255;    // v22: NPC health 0..255 (display-only on client mirror)
+    uint8_t          movementMode_   = 0;      // v139: CMC EMovementMode (1=Walk, 3=Flying, etc.)
+    float            maxWalkSpeed_   = 0.f;    // v139: CMC MaxWalkSpeed (cm/s)
+    // v139 NpcState fields: host-authoritative state the unreliable EntityPose stream cannot carry.
+    // Stored on the Element so the client can suppress local AI for these fields.
+    uint8_t          npcAliveState_  = 0;      // 0=alive, 1=died, 2=preDied, 3=risen
+    uint32_t         npcAiTargetEid_ = 0;      // 0=no target; otherwise eid of the target actor
+    float            npcAiPhase_     = 0.f;    // behavior phase (Krampus phases, orborb wander)
+    uint8_t          npcSkinVariant_ = 0;      // host-rolled cosmetic variant
+    uint8_t          npcAnimVariant_ = 0;      // host-rolled animation variant
+    uint8_t          npcSummonState_ = 0;      // summoning state
 };
 
 }  // namespace coop::element

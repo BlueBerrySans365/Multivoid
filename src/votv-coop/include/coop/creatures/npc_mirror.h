@@ -37,6 +37,7 @@
 namespace coop::net {
 struct EntitySpawnPayload;
 struct EntityDestroyPayload;
+struct NpcStatePayload;
 }  // namespace coop::net
 
 namespace coop::npc_mirror {
@@ -126,6 +127,12 @@ void DestroyLocalNpcActor(void* actor);
 // pulls the AActor* off it, calls K2_DestroyActor, then drops the
 // unique_ptr<Npc> -- the dtor unregisters from the Registry.
 void OnEntityDestroy(const coop::net::EntityDestroyPayload& payload);
+
+// v139 NPC coherence: apply host-authoritative NPC state changes (alive/dead, AI target,
+// behavior phase, cosmetic variants, summon state). Resolves the mirror Element by
+// elementId, applies each non-zero field, and suppresses local AI for those fields.
+// Game thread. Payload by value (copied from the dispatch lambda).
+void OnNpcState(const coop::net::NpcStatePayload& payload);
 
 // Full sweep: K2_DestroyActor every bound client-mirror actor + drain
 // the MirrorManager (each Npc destructor calls Registry::UnregisterMirror

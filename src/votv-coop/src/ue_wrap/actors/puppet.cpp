@@ -515,6 +515,33 @@ void DriveCrouchState(void* actor, bool crouched) {
     }
 }
 
+uint8_t ReadCharacterMovementMode(void* actor) {
+    if (!actor || !R::IsLive(actor)) return 0;
+    void* cmc = ReadPtr(actor, P::off::ACharacter_CharacterMovement);
+    if (!cmc || !R::IsLive(cmc)) return 0;
+    return ReadAt<uint8_t>(cmc, P::off::UCharacterMovement_MovementMode);
+}
+
+float ReadCharacterMaxWalkSpeed(void* actor) {
+    if (!actor || !R::IsLive(actor)) return 0.f;
+    void* cmc = ReadPtr(actor, P::off::ACharacter_CharacterMovement);
+    if (!cmc || !R::IsLive(cmc)) return 0.f;
+    constexpr size_t kCMC_MaxWalkSpeed = 0x18C;
+    return ReadAt<float>(cmc, kCMC_MaxWalkSpeed);
+}
+
+void DriveNpcMovementMode(void* actor, uint8_t movementMode, float maxWalkSpeed) {
+    if (!actor || !R::IsLive(actor)) return;
+    void* cmc = ReadPtr(actor, P::off::ACharacter_CharacterMovement);
+    if (!cmc || !R::IsLive(cmc)) return;
+    if (movementMode > 0)
+        WriteAt<uint8_t>(cmc, P::off::UCharacterMovement_MovementMode, movementMode);
+    if (maxWalkSpeed > 0.f) {
+        constexpr size_t kCMC_MaxWalkSpeed = 0x18C;
+        WriteAt<float>(cmc, kCMC_MaxWalkSpeed, maxWalkSpeed);
+    }
+}
+
 void DisableCharacterTicks(void* actor) {
     if (!actor || !R::IsLive(actor)) return;
     DisableMovementTick(actor);

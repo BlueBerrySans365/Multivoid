@@ -106,6 +106,7 @@
 #include "coop/creatures/kerfur_prop_adoption.h"  // K-6
 #include "coop/creatures/npc_mirror.h"
 #include "coop/creatures/npc_sync.h"
+#include "coop/creatures/npc_state_host.h"  // v139: HOST-side NpcState change detection + broadcast
 #include "coop/creatures/npc_world_enum.h"  // K-0: RegisterExistingWorldNpcs (moved out of npc_sync)
 #include "coop/world/world_actor_sync.h"  // v80 (B3b): non-Character event-actor transform mirror (sibling of npc_sync)
 #include "coop/creatures/piramid_sync.h"      // v97: piramid event choreography lane (mirror brain suppression + PyramidGather)
@@ -300,6 +301,7 @@ void ConnectReplayForSlot(int slot) {
     coop::trash_pile_sync::QueueConnectBroadcastForSlot(slot);    // v57 pile counters (adopt=1) + depleted-key replay
     coop::npc_world_enum::RegisterExistingWorldNpcs(coop::npc_world_enum::NpcEnumOrigin::ConnectEdge);  // pre-existing/level-load NPCs (the save's kerfur) -> joiner adopts its twin
     coop::npc_sync::QueueConnectBroadcastForSlot(slot);           // existing NPCs -> joiner
+    coop::npc_state_host::QueueConnectSnapshotForSlot(slot);      // v139: NPC state changes (alive/dead, variants) -> joiner
     coop::world_actor_sync::QueueConnectBroadcastForSlot(slot);   // v80 (B3b): existing event WorldActors -> joiner
     coop::balance_sync::OnClientConnect(slot);                    // v30: host's current balance
     coop::player_inventory_sync::EnsurePlayerFile(slot);         // v73: ensure this peer's per-save inventory file exists
@@ -403,6 +405,7 @@ DisconnectStats DisconnectAll() {
     stats.initProcessedDropped = coop::prop_lifecycle::OnDisconnect().initProcessedDropped;
     stats.snapPending = coop::prop_snapshot::OnDisconnect();
     coop::npc_sync::OnDisconnect();
+    coop::npc_state_host::OnDisconnect();  // v139: clear cached NPC state snapshots
     coop::world_actor_sync::OnDisconnect();    // v80 (B3b): drain WorldActor mirrors (K2 client ones) + clear host reverse-map
     coop::piramid_sync::OnDisconnect();        // v97: drop pending gather + gather-edge map + restored-tick set (hooks stay latched)
     coop::npc_adoption::OnSessionEnd();        // v75: drop pending deferred adoptions + reset latches
@@ -543,6 +546,7 @@ void TickGameplay(coop::net::Session& session, bool isConnected, bool isHost,
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:dwindow"}; coop::dwindow_sync::Tick(); }       // Ad_window_C panoramic RT: client-side dirty() suppression
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:grime"}; coop::grime_sync::Tick(); }          // v42 surface grime: poll wipes + death-watch destroy + deferred-apply retry
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:npc_host"}; coop::npc_sync::TickPoseStream(); }    // v37 HOST: read NPCs -> publish EntityPose batch (host-only, no-op on client)
+    { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:npc_state"}; coop::npc_state_host::TickNpcState(); } // v139 HOST: detect NPC state changes -> send NpcState reliably (host-only, no-op on client)
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:npc_client"}; coop::npc_mirror::TickClientNpcs(); }  // v37 CLIENT: apply batch + drive mirror interp (client-only, no-op on host)
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:worldactor_host"}; coop::world_actor_sync::TickPoseStream(); }       // v80 HOST: read event WorldActors -> publish WorldActorPose batch (host-only, no-op on client)
     { PP::Scope _s{PP::Bucket::Interactable}; ue_wrap::ScopedWalkTimer _w{"sync:worldactor_client"}; coop::world_actor_sync::TickClientWorldActors(); } // v80 CLIENT: apply batch + drive WorldActor mirror interp (client-only, no-op on host)

@@ -770,6 +770,27 @@ bool HandleEntityEvent(net::Session& session,
         });
         break;
     }
+    case net::ReliableKind::NpcState: {
+        // v139 NPC coherence: host-authoritative NPC state changes (alive/dead, AI target,
+        // behavior phase, cosmetic variants, summon state). Client applies + suppresses local AI.
+        if (msg.senderPeerSlot != coop::players::kPeerIdHost) {
+            UE_LOGW("event_feed: NpcState from non-host senderPeerSlot=%d -- dropping",
+                    static_cast<int>(msg.senderPeerSlot));
+            break;
+        }
+        if (msg.payloadLen < sizeof(net::NpcStatePayload)) {
+            UE_LOGW("event_feed: NpcState payload too short (%zu < %zu)",
+                    static_cast<size_t>(msg.payloadLen), sizeof(net::NpcStatePayload));
+            break;
+        }
+        net::NpcStatePayload p{};
+        std::memcpy(&p, msg.payload.get(), sizeof(p));
+        net::NpcStatePayload pCopy = p;
+        ue_wrap::game_thread::Post([pCopy] {
+            ::coop::npc_mirror::OnNpcState(pCopy);
+        });
+        break;
+    }
     default:
         return false;  // not an entity-family kind -> event_feed tries the next family
     }

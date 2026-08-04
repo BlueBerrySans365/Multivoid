@@ -107,6 +107,10 @@ void Npc::SetTargetNpcPose(const coop::net::EntityPoseSnapshot& snap) {
     // v22 NPC health: store the quantized health fraction for display on the mirror.
     // DISPLAY-ONLY -- never writes save state on the client.
     healthFrac_ = snap.healthFrac;
+    // v139: store the host's CMC MovementMode + MaxWalkSpeed so ApplyToEngine can
+    // write them to the mirror's CMC (AnimBP state machine + locomotion blend).
+    movementMode_ = snap.movementMode;
+    maxWalkSpeed_ = snap.maxWalkSpeed;
 
     // First packet OR a teleport (error beyond the snap threshold) -> SNAP, no LERP across.
     const float dx = tgtPos.X - curPos_.X, dy = tgtPos.Y - curPos_.Y, dz = tgtPos.Z - curPos_.Z;
@@ -184,6 +188,12 @@ void Npc::ApplyToEngine() {
     const ue_wrap::FVector vel{ std::cos(yawRad) * curSpeed_, std::sin(yawRad) * curSpeed_, 0.f };
     const bool inAir = (curStateBits_ & coop::net::kStateBitInAir) != 0;
     Pup::DriveCharacterMovement(actor, vel, inAir);
+    // v139: write the host's full CMC MovementMode + MaxWalkSpeed so the mirror's AnimBP
+    // state machine (falling/flying/walking transitions) and locomotion blend match exactly.
+    // DriveCharacterMovement already writes MovementMode from the inAir bit; this overwrites
+    // with the actual engine mode (covers Flying, Swimming, etc. that the binary bit misses).
+    if (movementMode_ > 0 || maxWalkSpeed_ > 0.f)
+        Pup::DriveNpcMovementMode(actor, movementMode_, maxWalkSpeed_);
     // 2026-07-03 wisp mirror: replay the native landing edge (landed=true + dir(true) -> the
     // fade-in the wisp gates behind a CMC-tick-computed CurrentFloor read its parked CMC can
     // never produce). Grounded-per-host = drive; retried per frame until wisp_C resolves (also

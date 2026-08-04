@@ -40,7 +40,7 @@ bool Session::TakeRemoteNpcBatch(std::vector<EntityPoseSnapshot>& out) {
 int Session::SerializeLocalNpcBatch(uint8_t* buf) {
     // Serialize ONCE per send (same body for every peer; only the per-peer header
     // seq differs). One datagram = PacketHeader(20) + EntityPoseBatchHeader(4) +
-    // N*EntityPoseSnapshot(40, v39), MTU-capped at kMaxNpcBatchEntries. The leading
+    // N*EntityPoseSnapshot(49, v139), MTU-capped at kMaxNpcBatchEntries. The leading
     // PacketHeader bytes are left for the caller to stamp per-peer.
     std::lock_guard<std::mutex> lk(localMutex_);
     if (!hasLocalNpcBatch_ || localNpcBatch_.empty()) return 0;

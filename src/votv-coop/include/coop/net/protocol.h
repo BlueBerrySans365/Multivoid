@@ -705,7 +705,7 @@ inline constexpr uint32_t kMagic = 0x564D5450u;
 // + replays them in ConnectReplayForSlot. mainPlayer.holding_actor with an Aprop_C no
 // longer feeds the PropSpawn/PropPose path (the trash clump/pile carry -- the
 // non-Aprop_C holding_actor case -- stays on its lane untouched).
-inline constexpr uint16_t kProtocolVersion = 138; // v138 (2026-08-02, ATV single-driver: AtvOccupied=126, host rejects 2nd player from occupied ATV with toast). Prior: v137 (2026-08-01, Dream sync: DreamSpawn=124 + DreamEnd=125, shared dream experience with host-authoritative selection). Prior: v136 (2026-07-31, consume b133: chat HISTORY + the roster ledger/player list + host-assigned unique nicknames persisted to ini + real UTF-8 across every text surface (imgui 1.92.9 lazy atlas, +4,741 codepoints and the combining marks) + the CURSOR fix (ScaleAllSizes truncated MouseCursorScale to 0) + GitHub issue #5 (the overlay stops taking keys the GAME is typing: the predicate is now the game's own IsValid(activeInterface) guard, and the focus backstop asks about USER 0 so WidgetInteraction's virtual user cannot latch it) + the chat send-flicker and nameplate centring/host-ping fixes. No wire-format change in the b133 range; the bump is the release rule + the Paper-pair build number). Prior: v133 (2026-07-29, CHAT HISTORY -- +ChatLine=119 +ChatSpeaker=120, and ChatMessage=48 becomes client->host ONLY (out of IsClientRelayableReliableKind, RULE 2). Chat inverts from host-RELAYED to host-AUTHORED: the lobby now has a chat RECORD with a host-assigned lineSeq that IS the total order every peer sorts by, and a joiner is SEEDED from it. The relay could not carry this -- it fires on the NET thread at receive time, before the game thread where a lineSeq could be assigned even exists, so at relay time the order does not yet exist. A parse change AND a release, so the Paper-pair build number moves with it). Prior: v132 (2026-07-28, ARC B -- the HOST is the canonical namer: a Join's nick is ARBITRATED before it enters the ledger, and the assignment reaches the named peer on its own RosterRow (whose nick already sat in the FIXED PREFIX above the applyDeclared gate for exactly this). The row FORMAT is unchanged -- what changed is who authors the value and that the named peer KEEPS it: per the user's 2026-07-28 decision the assigned name is written back to multivoid.ini, so the next session asks to be called Pelmentor2 and keeps it unless someone else already is. The bump is the release rule + the Paper-pair build number, not a parse change). Prior: v131 (2026-07-28: RosterRow FIXED PREFIX widened -- +[u8 linkKind][i16 pingMs] after eid, so the HOST publishes how every player is connected to the SESSION and every board renders the same value for the same player. Retires the per-viewer derivation that answered transport on some rows and ROUTE ("VIA HOST") on others, in one column, side by side; retires the client-side rttMsForSlot fan-out to nameplates, which could only ever measure the host link. The fields sit in the FIXED PREFIX because the tail's offset arithmetic lives inside the applyDeclared block, which is skipped for exactly the host row and the receiver's own row). Prior: v130 (2026-07-27, arc A: PlayerJoined WIDENED + renamed RosterRow -- +uint16 playerNo, admits slot 0 and the receiver's own slot, playerNo 0 = slot empty. The roster ledger is now the single presence authority; a client's TAB used to list only itself and the host). Prior: v129 (2026-07-26, consume b128: DX12 overlay renderer + Graphics API indicator + Tidy-up fix + the release notes/install pipeline); v128 (consume b127, the WHOLE ini workstream -- arc 3 const Row& ratchet + arc 4 T8 catalog); v127 (consume b126, arcs 1+2); v126 (consume b125, drill-matrix, retracted); v125 (2026-07-22, R11b container extraction):
+inline constexpr uint16_t kProtocolVersion = 139; // v139 (2026-08-04, NPC coherence: EntityPoseSnapshot grows 44->49 bytes with movementMode + maxWalkSpeed fields, kMaxNpcBatchEntries 31->27). Prior: v138 (2026-08-02, ATV single-driver: AtvOccupied=126, host rejects 2nd player from occupied ATV with toast). Prior: v137 (2026-08-01, Dream sync: DreamSpawn=124 + DreamEnd=125, shared dream experience with host-authoritative selection). Prior: v136 (2026-07-31, consume b133: chat HISTORY + the roster ledger/player list + host-assigned unique nicknames persisted to ini + real UTF-8 across every text surface (imgui 1.92.9 lazy atlas, +4,741 codepoints and the combining marks) + the CURSOR fix (ScaleAllSizes truncated MouseCursorScale to 0) + GitHub issue #5 (the overlay stops taking keys the GAME is typing: the predicate is now the game's own IsValid(activeInterface) guard, and the focus backstop asks about USER 0 so WidgetInteraction's virtual user cannot latch it) + the chat send-flicker and nameplate centring/host-ping fixes. No wire-format change in the b133 range; the bump is the release rule + the Paper-pair build number). Prior: v133 (2026-07-29, CHAT HISTORY -- +ChatLine=119 +ChatSpeaker=120, and ChatMessage=48 becomes client->host ONLY (out of IsClientRelayableReliableKind, RULE 2). Chat inverts from host-RELAYED to host-AUTHORED: the lobby now has a chat RECORD with a host-assigned lineSeq that IS the total order every peer sorts by, and a joiner is SEEDED from it. The relay could not carry this -- it fires on the NET thread at receive time, before the game thread where a lineSeq could be assigned even exists, so at relay time the order does not yet exist. A parse change AND a release, so the Paper-pair build number moves with it). Prior: v132 (2026-07-28, ARC B -- the HOST is the canonical namer: a Join's nick is ARBITRATED before it enters the ledger, and the assignment reaches the named peer on its own RosterRow (whose nick already sat in the FIXED PREFIX above the applyDeclared gate for exactly this). The row FORMAT is unchanged -- what changed is who authors the value and that the named peer KEEPS it: per the user's 2026-07-28 decision the assigned name is written back to multivoid.ini, so the next session asks to be called Pelmentor2 and keeps it unless someone else already is. The bump is the release rule + the Paper-pair build number, not a parse change). Prior: v131 (2026-07-28: RosterRow FIXED PREFIX widened -- +[u8 linkKind][i16 pingMs] after eid, so the HOST publishes how every player is connected to the SESSION and every board renders the same value for the same player. Retires the per-viewer derivation that answered transport on some rows and ROUTE ("VIA HOST") on others, in one column, side by side; retires the client-side rttMsForSlot fan-out to nameplates, which could only ever measure the host link. The fields sit in the FIXED PREFIX because the tail's offset arithmetic lives inside the applyDeclared block, which is skipped for exactly the host row and the receiver's own row). Prior: v130 (2026-07-27, arc A: PlayerJoined WIDENED + renamed RosterRow -- +uint16 playerNo, admits slot 0 and the receiver's own slot, playerNo 0 = slot empty. The roster ledger is now the single presence authority; a client's TAB used to list only itself and the host). Prior: v129 (2026-07-26, consume b128: DX12 overlay renderer + Graphics API indicator + Tidy-up fix + the release notes/install pipeline); v128 (consume b127, the WHOLE ini workstream -- arc 3 const Row& ratchet + arc 4 T8 catalog); v127 (consume b126, arcs 1+2); v126 (consume b125, drill-matrix, retracted); v125 (2026-07-22, R11b container extraction):
                                                   // ContainerContents becomes BIDIRECTIONAL and its
                                                   // blob gains a baseHash. A client now AUTHORS the
                                                   // world container it mutated (presser-authored
@@ -2686,6 +2686,12 @@ enum class ReliableKind : uint8_t {
                         //     this with the ATV key + the occupying player's slot so the
                         //     client can show an "ATV occupied by [name]" toast. Payload:
                         //     AtvOccupiedPayload.
+    NpcState = 127,     // v139 (NPC coherence): HOST->ALL reliable NPC state changes that
+                        //     the unreliable EntityPose stream cannot carry: alive/dead
+                        //     transitions, AI target assignment, behavior phase changes,
+                        //     cosmetic variants (skin/anim), summon state. Sent on state
+                        //     change + included in the connect snapshot. Payload:
+                        //     NpcStatePayload.
     // Slots 21/22 (HeldClumpGrab/Release) RETIRED 2026-06-03 (v26, RULE 2): the v25
     // hand-attach model for the trash clump was the wrong shape (VOTV carries the
     // clump via the physics grab, floating in front, like the mannequin -- not
@@ -2918,8 +2924,14 @@ struct EntityPoseSnapshot {
     uint8_t  kerfFace;    // 1  -- v74: kerfur faceMaterialIndex (@ "faceMaterialIndex"); VALID iff bit3. The mirror's
                           //      face actor (kerfusFace) is otherwise frozen (its timer_face is neutralized at park).
     uint8_t  healthFrac;  // 1  -- v22: NPC health / maxHealth, quantized 0..255 (255 = full). DISPLAY-ONLY on client.
+    uint8_t  movementMode;  // 1  -- v139: full CMC EMovementMode (1=Walk, 2=Swim, 3=Fall, 4=Flying, 5=Nothing).
+                            //      Replaces the binary inAir guess with the actual engine mode. Client writes
+                            //      this to the mirror's CMC.MovementMode so the AnimBP state machine matches.
+    float    maxWalkSpeed;  // 4  -- v139: CMC MaxWalkSpeed (cm/s). NPCs that change speed at runtime
+                            //      (zombie_skerfuro setSpeed, arirGunStealer sprint) need the client mirror
+                            //      to know the configured limit -- affects footstep volume + locomotion blend.
 };
-static_assert(sizeof(EntityPoseSnapshot) == 44, "EntityPoseSnapshot must be 44 bytes");
+static_assert(sizeof(EntityPoseSnapshot) == 49, "EntityPoseSnapshot must be 49 bytes");
 
 // EntityPoseSnapshot.stateBits flags. bit 0 reuses kStateBitInAir (same numeric/meaning as
 // PoseSnapshot). bits 1-2 are EntityPose-specific (the PoseSnapshot 0x02 = kStateBitRagdoll does
@@ -2937,14 +2949,14 @@ struct EntityPoseBatchHeader {
 };
 static_assert(sizeof(EntityPoseBatchHeader) == 4, "EntityPoseBatchHeader must be 4 bytes");
 
-// Max NPCs per EntityPose datagram, MTU-capped: (1400 - PacketHeader(20) - BatchHeader(4)) / 44 = 31.
+// Max NPCs per EntityPose datagram, MTU-capped: (1400 - PacketHeader(20) - BatchHeader(4)) / 49 = 27.
 // More NPCs than this in one tick truncate (logged); the realistic coop NPC count fits.
-inline constexpr int kMaxNpcBatchEntries = 31;
+inline constexpr int kMaxNpcBatchEntries = 27;
 
 // Worst-case EntityPose datagram size (full batch). Sizes both the send-loop
 // stack buffer (session.cpp) and Session::SerializeLocalNpcBatch's output
 // contract (session_npc.cpp). PacketHeader(20) + EntityPoseBatchHeader(4) +
-// 31 * EntityPoseSnapshot(44) = 1388 bytes (< 1400 MTU).
+// 27 * EntityPoseSnapshot(49) = 1347 bytes (< 1400 MTU).
 inline constexpr int kNpcPoseDatagramMax =
     static_cast<int>(sizeof(PacketHeader) + sizeof(EntityPoseBatchHeader)) +
     kMaxNpcBatchEntries * static_cast<int>(sizeof(EntityPoseSnapshot));
@@ -4017,6 +4029,22 @@ struct AtvOccupiedPayload {
 static_assert(sizeof(AtvOccupiedPayload) == 36, "AtvOccupiedPayload must be 36 bytes");
 static_assert(sizeof(AtvOccupiedPayload) <= 256 - 20 - 8,
               "AtvOccupiedPayload must fit in one reliable datagram (kMaxReliablePayload)");
+
+// v139 (NPC coherence): reliable NPC state changes that the unreliable EntityPose stream
+// cannot carry. Sent by the HOST on state-change edges + included in the connect snapshot.
+// The client applies each field and suppresses corresponding local AI processing.
+struct NpcStatePayload {
+    uint32_t elementId;       // 4  -- NPC entity identity (host-allocated Element id)
+    uint32_t aiTargetEid;     // 4  -- 0 = no target; otherwise eid of the target actor (lockTarget/specificTarget)
+    float    aiPhaseFloat;    // 4  -- behavior phase as float (Krampus phases, orborb wander state index)
+    uint8_t  aliveState;      // 1  -- 0=alive, 1=died, 2=preDied, 3=risen
+    uint8_t  skinVariant;     // 1  -- host-rolled cosmetic variant (setRandomSkin)
+    uint8_t  animVariant;     // 1  -- host-rolled animation variant (setRandomAnimation)
+    uint8_t  summonState;     // 1  -- zombie_skerfuro summoning state
+};
+static_assert(sizeof(NpcStatePayload) == 18, "NpcStatePayload must be 18 bytes");
+static_assert(sizeof(NpcStatePayload) <= 256 - 20 - 8,
+              "NpcStatePayload must fit in one reliable datagram (kMaxReliablePayload)");
 
 // v76 (2026-06-15): ATV grab-carry RELEASE -- sent ONCE on the grab-release/throw edge by the peer
 // that was the grav-hand grabber (atv_sync). The receiver re-enables the mirror's physics

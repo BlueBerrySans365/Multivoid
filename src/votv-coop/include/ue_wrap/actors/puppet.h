@@ -191,6 +191,22 @@ bool ReadCharacterIsCrouched(void* actor);
 // Game thread only.
 void DriveCrouchState(void* actor, bool crouched);
 
+// v139 NPC coherence: read the full CMC EMovementMode byte (1=Walk, 2=Swim,
+// 3=Fall, 4=Flying, 5=Nothing). Returns the mode value; 0 on failure.
+// Symmetric with ReadCharacterIsFalling -- same wrapper pattern.
+// Game thread only.
+uint8_t ReadCharacterMovementMode(void* actor);
+
+// v139 NPC coherence: read CMC MaxWalkSpeed (cm/s). Returns the value;
+// 0.f on failure. Game thread only.
+float ReadCharacterMaxWalkSpeed(void* actor);
+
+// v139 NPC coherence: write the full CMC MovementMode + MaxWalkSpeed to a
+// mirror NPC. The host streams these values; the client applies them so the
+// mirror's AnimBP state machine + locomotion blend match. No-op on null/dead
+// actor or null/dead CMC. Game thread only.
+void DriveNpcMovementMode(void* actor, uint8_t movementMode, float maxWalkSpeed);
+
 // ---- kerfur head-look (v39) ----------------------------------------------
 // The kerfur AnimBP (UAnimBlueprint_kerfurOmega_regular_C, shared by NPCs + player
 // puppets) drives the head/neck via two FAnimNode_LookAt nodes that aim at the AnimBP

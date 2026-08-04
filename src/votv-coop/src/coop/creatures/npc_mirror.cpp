@@ -459,6 +459,71 @@ void OnEntityDestroy(const coop::net::EntityDestroyPayload& payload) {
     // drained's destructor fires here -> Registry::UnregisterMirror(eid).
 }
 
+void OnNpcState(const coop::net::NpcStatePayload& payload) {
+    // v139 NPC coherence: apply host-authoritative NPC state changes. The client resolves
+    // the mirror Element by elementId and applies each non-zero field. This is the client's
+    // ONLY source for alive/dead transitions, AI targets, behavior phases, cosmetic variants,
+    // and summon state -- local AI decisions for these fields are suppressed.
+    auto* s = coop::npc_sync::GetSession();
+    if (!s) return;
+    if (s->role() == coop::net::Role::Host) {
+        UE_LOGI("npc-sync[client OnNpcState]: received on host -- dropping (loopback bounce)");
+        return;
+    }
+    if (!coop::element::Registry::IsAllowedHostAllocatedEid(payload.elementId)) {
+        UE_LOGW("npc-sync[client OnNpcState]: elementId=%u out of allowed host range -- dropping",
+                payload.elementId);
+        return;
+    }
+    const coop::element::ElementId eid =
+        static_cast<coop::element::ElementId>(payload.elementId);
+    coop::element::Npc* el = NpcMirrors().Get(eid);
+    if (!el) {
+        // NPC not yet mirrored (EntitySpawn hasn't arrived yet) -- log and drop.
+        // The connect-snapshot will re-send NpcState after the NPC is materialized.
+        UE_LOGI("npc-sync[client OnNpcState]: eid=%u not in mirror table -- dropping (pre-spawn)",
+                payload.elementId);
+        return;
+    }
+    void* actor = el->GetActor();
+    if (!actor || !R::IsLiveByIndex(actor, el->GetInternalIdx())) {
+        UE_LOGI("npc-sync[client OnNpcState]: eid=%u actor not live -- dropping",
+                payload.elementId);
+        return;
+    }
+
+    // Store the host-authoritative state on the Element. The client suppresses
+    // local AI for these fields -- only the host's values are used.
+    el->npcAliveState_  = payload.aliveState;
+    el->npcAiTargetEid_ = payload.aiTargetEid;
+    el->npcAiPhase_     = payload.aiPhaseFloat;
+    el->npcSkinVariant_ = payload.skinVariant;
+    el->npcAnimVariant_ = payload.animVariant;
+    el->npcSummonState_ = payload.summonState;
+
+    // Log state changes for verification.
+    if (payload.aliveState > 0) {
+        UE_LOGI("npc-sync[client OnNpcState]: eid=%u aliveState=%u (host authoritative)",
+                payload.elementId, static_cast<unsigned>(payload.aliveState));
+    }
+    if (payload.aiTargetEid != 0) {
+        UE_LOGI("npc-sync[client OnNpcState]: eid=%u aiTargetEid=%u (host authoritative)",
+                payload.elementId, payload.aiTargetEid);
+    }
+    if (payload.skinVariant > 0) {
+        UE_LOGI("npc-sync[client OnNpcState]: eid=%u skinVariant=%u (host authoritative)",
+                payload.elementId, static_cast<unsigned>(payload.skinVariant));
+    }
+    if (payload.animVariant > 0) {
+        UE_LOGI("npc-sync[client OnNpcState]: eid=%u animVariant=%u (host authoritative)",
+                payload.elementId, static_cast<unsigned>(payload.animVariant));
+    }
+    if (payload.summonState > 0) {
+        UE_LOGI("npc-sync[client OnNpcState]: eid=%u summonState=%u (host authoritative)",
+                payload.elementId, static_cast<unsigned>(payload.summonState));
+    }
+}
+
 void DrainClientMirrors() {
     // PR-FOUNDATION-3 Inc2 (2026-05-30): this now drains the UNIFIED
     // MirrorManager<Npc> for BOTH roles (the host's bespoke g_npcElements is
