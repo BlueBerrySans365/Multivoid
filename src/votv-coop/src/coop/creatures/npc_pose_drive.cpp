@@ -181,19 +181,25 @@ void Npc::ApplyToEngine() {
     // same class spawned at the same place) -- no mesh-offset reconstruction (unlike RemotePlayer).
     E::SetActorLocation(actor, curPos_);
     E::SetActorRotation(actor, ue_wrap::FRotator{0.f, curYaw_, 0.f});
-    // Drive the mirror's OWN CMC so its AnimBP reads the right Velocity + MovementMode (the native
-    // locomotion path -- the same fields the host NPC's possessed CMC carries). Reconstruct planar
-    // velocity from the streamed body-yaw + speed magnitude.
-    const float yawRad = curYaw_ * 0.01745329252f;  // PI/180
-    const ue_wrap::FVector vel{ std::cos(yawRad) * curSpeed_, std::sin(yawRad) * curSpeed_, 0.f };
-    const bool inAir = (curStateBits_ & coop::net::kStateBitInAir) != 0;
-    Pup::DriveCharacterMovement(actor, vel, inAir);
-    // v139: write the host's full CMC MovementMode + MaxWalkSpeed so the mirror's AnimBP
-    // state machine (falling/flying/walking transitions) and locomotion blend match exactly.
-    // DriveCharacterMovement already writes MovementMode from the inAir bit; this overwrites
-    // with the actual engine mode (covers Flying, Swimming, etc. that the binary bit misses).
-    if (movementMode_ > 0 || maxWalkSpeed_ > 0.f)
-        Pup::DriveNpcMovementMode(actor, movementMode_, maxWalkSpeed_);
+    // v139 death suppression: when the host reports aliveState > 0 (died/preDied), stop driving
+    // CMC velocity and movement mode so the engine's native death animation plays. Position and
+    // rotation are still driven (the NPC should be at the right location), but the locomotion
+    // blend must not fight the death AnimBP state.
+    if (npcAliveState_ == 0) {
+        // Drive the mirror's OWN CMC so its AnimBP reads the right Velocity + MovementMode (the native
+        // locomotion path -- the same fields the host NPC's possessed CMC carries). Reconstruct planar
+        // velocity from the streamed body-yaw + speed magnitude.
+        const float yawRad = curYaw_ * 0.01745329252f;  // PI/180
+        const ue_wrap::FVector vel{ std::cos(yawRad) * curSpeed_, std::sin(yawRad) * curSpeed_, 0.f };
+        const bool inAir = (curStateBits_ & coop::net::kStateBitInAir) != 0;
+        Pup::DriveCharacterMovement(actor, vel, inAir);
+        // v139: write the host's full CMC MovementMode + MaxWalkSpeed so the mirror's AnimBP
+        // state machine (falling/flying/walking transitions) and locomotion blend match exactly.
+        // DriveCharacterMovement already writes MovementMode from the inAir bit; this overwrites
+        // with the actual engine mode (covers Flying, Swimming, etc. that the binary bit misses).
+        if (movementMode_ > 0 || maxWalkSpeed_ > 0.f)
+            Pup::DriveNpcMovementMode(actor, movementMode_, maxWalkSpeed_);
+    }
     // 2026-07-03 wisp mirror: replay the native landing edge (landed=true + dir(true) -> the
     // fade-in the wisp gates behind a CMC-tick-computed CurrentFloor read its parked CMC can
     // never produce). Grounded-per-host = drive; retried per frame until wisp_C resolves (also
