@@ -262,10 +262,6 @@ CFG_FLAG(drone_validate_container, "drone_validate_container", "dev", false, nul
 // ---- [steam] ------------------------------------------------------------------
 CFG_FLAG(steam_lobby, "steam.lobby", "steam", false, nullptr,
     "Enable Steam lobby integration (create/join lobbies via ISteamMatchmaking).")
-CFG_INT(steam_lobby_max, "steam.lobby.max", "steam", 4, 2, 8, nullptr,
-    "Maximum number of players in a Steam lobby.")
-CFG_FLAG(steam_lobby_public, "steam.lobby.public", "steam", false, nullptr,
-    "If true, created lobbies are public (visible in lobby list). If false, friends-only.")
 CFG_FLAG(pile_dup_probe, "pile_dup_probe", "dev", false, nullptr,
     "Diagnostic probe: pile duplicate/identity mismatches.")
 CFG_FLAG(perf_probe, "perf_probe", "dev", false, nullptr,
