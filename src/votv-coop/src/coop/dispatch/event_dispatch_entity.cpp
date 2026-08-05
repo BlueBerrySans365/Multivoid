@@ -784,7 +784,7 @@ bool HandleEntityEvent(net::Session& session,
             break;
         }
         net::NpcStatePayload p{};
-        std::memcpy(&p, msg.payload.get(), sizeof(p));
+        std::memcpy(&p, msg.payload, sizeof(p));
         net::NpcStatePayload pCopy = p;
         ue_wrap::game_thread::Post([pCopy] {
             ::coop::npc_mirror::OnNpcState(pCopy);

@@ -58,6 +58,7 @@ inline constexpr const char* kSectionOrder[] = {
     "ui",      // fonts, scale, panels
     "voice",   // devices, gates, volumes
     "dev",     // dev/test flags -- deliberately last, out of casual sight
+    "steam",   // Steam lobby integration (behind #ifdef ENABLE_STEAM)
 };
 inline constexpr size_t kSectionCount = sizeof(kSectionOrder) / sizeof(kSectionOrder[0]);
 
