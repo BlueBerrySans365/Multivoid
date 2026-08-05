@@ -102,24 +102,6 @@ void SetPinned(bool pinned) {
     }
 }
 
-void Reset() {
-    // Clear reveal ramp state so the next session's first T-open starts from 0.
-    g_revealValue = 0.f;
-    g_revealFrom  = 0.f;
-    g_revealTo    = 0.f;
-    g_revealStart = 0;
-    g_openLogged  = false;
-    g_openedAtMs  = 0;
-    // Clear scroll anchor / pin state so stale keys don't match in the new snapshot.
-    g_pinned = false;
-    g_anchorKey = 0;
-    g_anchorSub = 0;
-    if (g_frozenPublished) {
-        coop::chat_feed::SetRetentionFrozen(false);
-        g_frozenPublished = false;
-    }
-}
-
 constexpr int kEntryRowCap = 16;   // most a single entry may wrap into
 
 // DERIVED, not chosen (2026-07-29). This was a hand-written 512 with the comment
@@ -161,6 +143,22 @@ bool     g_rowsHistory = false;  // was the history tier in the layout for this 
 bool     g_rowsValid   = false;
 
 }  // namespace
+
+void Reset() {
+    g_revealValue = 0.f;
+    g_revealFrom  = 0.f;
+    g_revealTo    = 0.f;
+    g_revealStart = 0;
+    g_openLogged  = false;
+    g_openedAtMs  = 0;
+    g_pinned = false;
+    g_anchorKey = 0;
+    g_anchorSub = 0;
+    if (g_frozenPublished) {
+        coop::chat_feed::SetRetentionFrozen(false);
+        g_frozenPublished = false;
+    }
+}
 
 void Draw() {
     // The snapshot is re-copied only when the store republished. With chat closed it
