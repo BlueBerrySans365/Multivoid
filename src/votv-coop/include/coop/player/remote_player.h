@@ -322,6 +322,14 @@ private:
     // is a no-op when the state hasn't changed, so we track the last
     // applied crouch state to avoid redundant writes each tick.
     bool             wasCrouched_ = false;
+    // Spawn-captured crouch baseline (2026-08-06): the puppet's capsule
+    // half-height and mesh RelLoc.Z at spawn time, after the engine
+    // settles the attachment chain. DriveCrouchState uses these instead of
+    // a process-wide static cache (which could get the wrong value if the
+    // first puppet to crouch was already crouched). Standing restores
+    // mesh to spawnMeshOffsetZ_ (typically 0) instead of -standingHalfH.
+    float            spawnCapsuleHalfH_ = 0.f;
+    float            spawnMeshOffsetZ_ = 0.f;
     // Phase 6F seat attachment: edge detector for sit-down/stand-up transitions.
     // On sit-down: snap puppet to seat position, set CMC to MOVE_None.
     // On stand-up: restore CMC to MOVE_Walking.

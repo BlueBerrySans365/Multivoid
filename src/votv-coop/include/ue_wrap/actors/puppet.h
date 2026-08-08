@@ -188,8 +188,19 @@ bool ReadCharacterIsCrouched(void* actor);
 // capsule half-height to match the source. The mesh relative-location
 // adjustment keeps the feet grounded during the transition. No-op on
 // null/dead actor or when the state hasn't changed.
+//
+// standingHalfH: the puppet's capsule half-height when standing (captured
+//   at spawn from the live capsule, replacing the old process-wide static
+//   cache which could get the wrong value if the first puppet to crouch
+//   was already crouched).
+// standingMeshOffsetZ: the puppet's Mesh.RelLoc.Z when standing (captured
+//   at spawn after the engine settles the attachment chain; typically 0).
+//   Used to restore the mesh to its correct standing position on uncrouch
+//   instead of a hardcoded -standingHalfH which may not match the actual
+//   settled chain.
 // Game thread only.
-void DriveCrouchState(void* actor, bool crouched);
+void DriveCrouchState(void* actor, bool crouched,
+                      float standingHalfH, float standingMeshOffsetZ);
 
 // v139 NPC coherence: read the full CMC EMovementMode byte (1=Walk, 2=Swim,
 // 3=Fall, 4=Flying, 5=Nothing). Returns the mode value; 0 on failure.

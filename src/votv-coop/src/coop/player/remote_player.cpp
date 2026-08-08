@@ -189,6 +189,28 @@ bool RemotePlayer::Spawn(const std::string& skinName) {
                 halfH, puppetMeshZ, puppetActorZ, puppetMeshZ - puppetActorZ);
     }
 
+    // Capture the puppet's capsule half-height and mesh RelLoc.Z at spawn
+    // time, after the engine has settled the attachment chain (the spawn
+    // settle in puppet_spawn.cpp set Mesh.RelLoc.Z = 0 via
+    // K2_SetRelativeLocation). DriveCrouchState uses these per-puppet
+    // values instead of a process-wide static cache, so each puppet gets
+    // the correct baseline regardless of which puppet crouches first.
+    {
+        void* capsule = ReadPtr(actor_, P::off::ACharacter_CapsuleComponent);
+        if (capsule && R::IsLive(capsule)) {
+            spawnCapsuleHalfH_ = ReadAt<float>(capsule, P::off::UCapsuleComponent_CapsuleHalfHeight);
+        }
+        if (spawnCapsuleHalfH_ <= 0.f) spawnCapsuleHalfH_ = 88.f;  // VOTV default
+        if (void* mesh = Pup::GetSkeletalMeshComponent(actor_)) {
+            if (R::IsLive(mesh)) {
+                constexpr size_t kRelLocZ = P::off::USceneComponent_RelativeLocation + sizeof(float) * 2;
+                spawnMeshOffsetZ_ = ReadAt<float>(mesh, kRelLocZ);
+            }
+        }
+        UE_LOGI("RemotePlayer::Spawn: crouch baseline -- capsuleHalfH=%.1f meshOffsetZ=%.1f",
+                spawnCapsuleHalfH_, spawnMeshOffsetZ_);
+    }
+
     // Anim drive: the puppet IS a mainPlayer_C orphan ⇒ BUA's
     // TryGetPawnOwner() returns the puppet itself ⇒ BUA reads
     // Pawn.GetMovementComponent().Velocity as a raw FProperty load on the
@@ -721,7 +743,7 @@ void RemotePlayer::ApplyToEngine() {
         // are consistent with the CMC state we just wrote.
         {
             const bool crouched = (curStateBits_ & coop::net::kStateBitCrouched) != 0;
-            Pup::DriveCrouchState(actor_, crouched);
+            Pup::DriveCrouchState(actor_, crouched, spawnCapsuleHalfH_, spawnMeshOffsetZ_);
             wasCrouched_ = crouched;
         }
         // Footstep audio (hands-on fix 2026-06-10): the native footstep

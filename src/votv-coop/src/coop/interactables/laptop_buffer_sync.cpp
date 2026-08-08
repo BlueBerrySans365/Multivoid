@@ -311,9 +311,13 @@ void HostApplyBatch(Reader& r, uint8_t senderSlot) {
                 q.bufferUids.erase(q.bufferUids.begin() + at);
             ++applied;
         } else {
-            if (arr.size() >= 1024) {
-                UE_LOGW("laptop_buffer: append rejected (arr=%u size=%zu cap=1024, from slot %u)",
-                        op.arrayId, arr.size(), static_cast<unsigned>(senderSlot));
+            // Combined cap across both arrays (data + buffer): a client can't
+            // grow one array to deflect the limit and keep growing the other.
+            // Total entries across both <= 1024. (Was per-array 1024 each, 2026-08-06.)
+            if (q.data.size() + q.buffer.size() >= 1024) {
+                UE_LOGW("laptop_buffer: append rejected (arr=%u combined=%zu+%zu cap=1024, from slot %u)",
+                        op.arrayId, q.data.size(), q.buffer.size(),
+                        static_cast<unsigned>(senderSlot));
                 continue;
             }
             arr.push_back(op.str);

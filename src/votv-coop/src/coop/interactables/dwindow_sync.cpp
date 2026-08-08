@@ -10,11 +10,19 @@
 // that block the entire window view.
 //
 // PHASE 1 FIX: suppress the client's native dirty() by clearing the cv (canvas valid)
-// flag every tick. cv@0x0288 gates the canvas draw operations -- when false, dirty()
-// is a no-op (the Canvas is not valid). The host's native dirty() runs normally.
+// flag. cv@0x0288 gates the canvas draw operations -- when false, dirty() is a no-op
+// (the Canvas is not valid). The host's native dirty() runs normally.
+//
+// Suppression is EDGE-TRIGGERED, not unconditional every tick: cv is cleared only
+// when the buggy native dirty() timer has set it true (rising edge) or re-armed it
+// faster than we clear (persistent true). When the canvas goes idle (cv=false), the
+// per-window state resets so the next buggy cycle is caught fresh. This keeps the
+// clear conditional on actual buggy-timer activity and lets any future RT paint sync
+// that sets cv=true show through on an idle (cv=false) window.
 //
 // This module is stateless -- no network wire, no keyed payloads, no connect-snapshot.
-// It simply detects d_window_C actors via GUObjectArray scan and clears cv on clients.
+// It detects d_window_C actors via GUObjectArray scan and conditionally clears cv on
+// clients.
 
 #include "coop/interactables/dwindow_sync.h"
 
@@ -42,10 +50,20 @@ void*   g_dwinCls  = nullptr;  // d_window_C UClass
 int32_t g_cvOff    = -1;       // Ad_window_C::cv@0x0288 (bool -- canvas valid flag)
 
 // Cached d_window_C actor pointers (resolved once, re-validated by index).
-// Avoids the expensive full GUObjectArray scan every tick.
+// Avoids the expensive full GUObjectArray scan every tick for streaming in/out.
+// `suppressed` is edge-triggered: true once we've cleared cv for this cycle.
+// Reset to false when cv reads as false (the canvas is idle / a new cycle may
+// begin). `consecutiveTrue` counts how many ticks cv has stayed true -- if it
+// persists beyond one tick, the buggy timer is firing faster than we clear,
+// so we force-clear again. This keeps suppression conditional on actual
+// buggy-timer activity (cv rising / persisting) rather than firing
+// unconditionally every tick -- future RT paint sync that sets cv=true shows
+// through on a clean (cv=false) window until the next buggy cycle.
 struct CachedDWindow {
     void* actor = nullptr;
     int32_t idx = -1;
+    bool suppressed = false;
+    int consecutiveTrue = 0;
 };
 std::vector<CachedDWindow> g_cachedWindows;
 bool g_cachePrimed = false;
@@ -115,18 +133,38 @@ void SuppressClientDirty() {
         g_cachePrimed = true;
     }
 
-    // Suppress on cached actors (re-validate index before use).
+    // Suppress on cached actors (re-validate index before use). Edge-triggered:
+    // only clear cv when the buggy native dirty() timer has set it true (canvas
+    // is valid and about to draw the opaque-dirt bug). Once cleared, mark the
+    // window suppressed so we don't re-clear every tick -- cv stays false until
+    // the canvas goes idle. If cv stays true for more than one consecutive
+    // tick, the buggy timer is re-arming faster than we clear, so force-clear
+    // again. When cv reads false (canvas idle), reset both flags so the next
+    // buggy cycle is caught fresh. This keeps suppression conditional on actual
+    // buggy-timer activity rather than firing unconditionally every tick, and
+    // lets any future RT paint sync that sets cv=true show through on an idle
+    // (cv=false) window.
     int suppressed = 0;
     for (auto& w : g_cachedWindows) {
         if (!R::IsLiveByIndex(w.actor, w.idx)) continue;
         bool* cvPtr = reinterpret_cast<bool*>(reinterpret_cast<char*>(w.actor) + g_cvOff);
         if (*cvPtr) {
-            *cvPtr = false;
-            ++suppressed;
+            ++w.consecutiveTrue;
+            // Clear on the rising edge (first true tick) or if cv persists
+            // (buggy timer re-arming faster than we clear).
+            if (!w.suppressed || w.consecutiveTrue > 1) {
+                *cvPtr = false;
+                w.suppressed = true;
+                ++suppressed;
+            }
+        } else {
+            // Canvas went idle -- reset so the next buggy cycle is caught fresh.
+            w.suppressed = false;
+            w.consecutiveTrue = 0;
         }
     }
     if (suppressed > 0)
-        UE_LOGI("dwindow: suppressed dirty() on %d/%zu panoramic window(s) (client-side)",
+        UE_LOGI("dwindow: suppressed dirty() on %d/%zu panoramic window(s) (client-side, edge-triggered)",
                 suppressed, g_cachedWindows.size());
 }
 
@@ -147,6 +185,8 @@ void OnDisconnect() {
     g_cachedWindows.clear();
     g_cachePrimed = false;
     g_lastCacheScanMs = 0;
+    // Suppression state lives in g_cachedWindows, so clearing it resets all
+    // per-window flags (suppressed, consecutiveTrue) for the next session.
 }
 
 }  // namespace coop::dwindow_sync

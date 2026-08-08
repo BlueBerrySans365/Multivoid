@@ -33,7 +33,8 @@ BUILT. Evidence `HO`=hands-on · `log` · `ST`=selftest/e2e · `code` · `inf` �
 | **Chip-pile / clump** (grab-carry-throw) | prop+intent | 12 | 10W · 2U | HO | HA/ARB | snapshot + bind |
 | **Trash-bits pile** (counter) | int-pair channel | 5 | 1W · 4U | code | CO/HA/∅ | snapshot |
 | **Kerfur** (NPC⇄prop convert + skins) | host-sim + verb | 9 | 4W · 5U | HO | HA/PP | snapshot + adopt |
-| **NPC host-sim** (generic creatures) | host-sim stream | 5 | 4W · 1U | HO | HA | snapshot |
+| **NPC host-sim** (generic creatures) | host-sim stream | 6 | 4W · 2U | HO | HA | snapshot |
+| **NPC coherence state** (Phase 6D) | reliable on-change | 6 | 6U | code | HA | connect-snapshot |
 | **Owner-entity** (eyer) | per-peer mirror | 3 | 3U | code | **PO** | keepalive |
 | **Roach** | paged snapshot | 2 | 2U | code | HA/ARB | snapshot |
 | **Wisp** (killer) | host-sim + event | 8 | 2W · 6U | HO | HA | none (transient) |
@@ -57,7 +58,7 @@ BUILT. Evidence `HO`=hands-on · `log` · `ST`=selftest/e2e · `code` · `inf` �
 | **Saved-signals store** | save-CRDT (no order) | 2 | 2U | code | CO | snapshot (save blob) |
 | **World-actor mirror** | host mirror | 6 | 3W · 3U | HO | HA | replay / seed |
 | **Meadow-DB** (§7) | save-CRDT | 5 | 2W · 3U | ST | CO/ARB/HA | seed |
-| **Remote-player body/ragdoll** | pose stream | 8 | 4W · 4U | HO | **PO** | spawn = seed |
+| **Remote-player body/ragdoll** | pose stream | 10 | 4W · 6U | HO | **PO** | spawn = seed |
 | **Nameplate + nick-color** | composite + pref | 8 | 6W · 2U | HO | ∅/CO/HA | recompute / at-join / arbitrated |
 | **Skins** | name-carried | 5 | 3W · 2U | HO | PO/CO | at-join |
 | **Hand-item / item-activate** | identity + pose | 6 | 3W · 3U | HO | CO/PO/CA | replay |
@@ -78,7 +79,7 @@ BUILT. Evidence `HO`=hands-on · `log` · `ST`=selftest/e2e · `code` · `inf` �
 | **Grime** | decrease-only min | 2 | 2U | code | CO | snapshot |
 | **Window-cleaning** | decrease-only min | 1 | 1W | ST | CO | snapshot |
 | **Garbage-chute** | client suppress | 2 | 2U | code | PP/HA | none |
-| **ATV** | occupant pose | 4 | 4U | code | CA/HA | snapshot |
+| **ATV** | occupant pose | 5 | 5U | code | CA/HA | snapshot |
 | **Shop-order** | client→host commit | 1 | 1U | code | **ARB** | watermark-prime |
 | **Appliance** | 1-bit channel | 1 | 1U | code | CO | snapshot |
 | **Weather** (§5) | field-state | 5 | 1W · 1B · 3U | log | HA | snapshot |
@@ -96,9 +97,13 @@ BUILT. Evidence `HO`=hands-on · `log` · `ST`=selftest/e2e · `code` · `inf` �
 | **Spawn-authority** | client suppress, **no wire** | 1 | 1U | code | HA | park at join window |
 | **Pause-guard** | local un-pause, **no wire** | 1 | 1U | code | ∅ | none |
 | **Container (device)** | open/close (device family) | 1 | 1U | code | CO | snapshot |
+| **Seed sync** (T2-7) | seed replication | 2 | 2U | code | HA | seed (connect broadcast) |
+| **Drone-call sync** (T2-8) | client→host request | 1 | 1U | code | HA | none (action) |
+| **Window-dirty suppression** | local suppress, **no wire** | 1 | 1U | code | ∅ | none (cosmetic) |
+| **Holder-authority** (A3) | authority gate, **no wire** | 2 | 2U | code | HA | none (per-session table) |
 
 **What the table shows at a glance (counts, not a score):**
-- **~67 systems, ~215 facets.** The single largest evidence bucket is `code` (a lane exists, never
+- **~72 systems, ~230 facets.** The single largest evidence bucket is `code` (a lane exists, never
   observed) — the honest majority §3 predicts a class-percentage would hide.
 - **The verified core is the VISIBLE loop:** remote bodies, chat, voice, join/save-transfer, the
   grab-carry-throw prop economy, keypads, kerfur/NPC, wisp/pyramid — each carries `HO`. The workstation
@@ -116,10 +121,12 @@ BUILT. Evidence `HO`=hands-on · `log` · `ST`=selftest/e2e · `code` · `inf` �
   class register cannot see. `peer-private` proper stays for the genuinely-unshared: player-inventory,
   the garbage crash-fix, coord_isPing, the local sim-teardowns.
 - **Some coop systems carry NO wire at all** — moderation (kick/ban via GNS-close + host-local files),
-  save-suppression (client-local save lockout), spawn-authority (client spawner park). They enforce host
-  authority "by construction", not by a packet. A wire-lane census is structurally blind to them; only a
-  system-by-system read finds them (§9). This is the §3 spine claim — system, not lane — proving out, and
-  it is exactly what the FIRST sweep missed until the self-audit.
+   save-suppression (client-local save lockout), spawn-authority (client spawner park), window-dirty
+   suppression (client-local dirty() fix), holder-authority (per-session eid→slot table gating
+   PropDestroy/PropConvert). They enforce host authority "by construction", not by a packet. A wire-lane
+   census is structurally blind to them; only a system-by-system read finds them (§9). This is the §3
+   spine claim — system, not lane — proving out, and it is exactly what the FIRST sweep missed until the
+   self-audit.
 
 ---
 
@@ -161,11 +168,46 @@ a take-4 bug that a later unverified fix addressed stays at its last-measured `B
 | ATV | authority-release / throw | U | code | CA | `OnAtvRelease` | none |
 | ATV | purchased spawn | U | code | HA | `OnAtvSpawn` | snapshot (synth key) |
 | ATV | purchased destroy | U | code | HA | `OnAtvDestroy` | n/a |
+| ATV | single-driver rejection (AtvOccupied) | U | code | HA | `atv_sync::OnDriverSit` → `SendReliableToSlot(AtvOccupied=126)` — host rejects 2nd player from occupied ATV | snapshot adopt=1 |
 | Shop-order | new order forward | U | code | ARB | `order_sync::CommitOrder` (host commits) | watermark-prime |
 | Appliance | on/off bool (6 classes) | U | code | CO | `g_applianceAdapter` | snapshot |
 | Container (device) | open/closed state | U | code | CO | `interactable_sync` `g_container` (`ReliableKind::ContainerState`) | snapshot |
 
 NOT SYNCED (world/misc): client clock never free-runs (TimeScale forced 0); balance HUD repaint is client-local; daily-task/email lean on save-transfer for JOIN state (no connect snapshot); door swing is force-snap not animated when far; serverbox break/fix verbs are invisible (state+`check()` mirror); grime/window FAR vanishes ignored (stream-out); calm turbine world goes silent; idle save-ATVs stay per-peer physics until authored; client never mutates its own shop orders; sub-second event cues escape the 1 Hz poll.
+
+### Seed sync (T2-7) — `coop/world/seed_sync`
+Host-authoritative FRandomStream seed replication for deterministic game systems (garbagePileSpawner, xmaslight). Host reads seed values from live instances via reflection, broadcasts on change + connect snapshot. Client applies seeds to matching local instances. Per `docs/COOP_RNGAuthority.md` §T2-7: these 3 seeded RNGs (garbagePileSpawner, radiotower, xmaslight) must be host-rolled. Shipped 2026-07-31 (v136); NOT hands-on — verdicts are `code`-tier.
+| # | facet | V | E | Auth | cite | mid-join |
+|---|---|---|---|---|---|---|
+| 1 | garbagePileSpawner seed replication | U | code | HA | `seed_sync::ReadGarbagePileSpawnerSeed` / `ApplyGarbagePileSpawnerSeed` | connect broadcast |
+| 2 | xmaslight seed replication | U | code | HA | `seed_sync::ReadXmaslightSeeds` / `ApplyXmaslightSeed` | connect broadcast |
+
+NOT SYNCED: radiotower.generateGizmos seed (listed in COOP_RNG_AUTHORITY as T2-7 but NOT implemented in seed_sync); seed change detection during play (seeds are one-shot at level load — the poll fires once then quiesces, which is correct for the known use case but means late-loading instances are only caught within the 5 s poll window).
+
+### Drone-call sync (T2-8) — `coop/interactables/drone_call_sync`
+Client→host request to call the delivery drone. Client POST-observer on InpActEvt_use detects lookAtActor == droneConsole_C, sends DroneCallRequest (no payload — singleton identity). Host resolves drone singleton + console actor, calls triggerFly(console) via UFunction dispatch. The drone body itself is synced by the existing Drone system (DroneState); this module only gates the *call* action. Shipped 2026-07-31 (v136); NOT hands-on — `code`-tier.
+| # | facet | V | E | Auth | cite | mid-join |
+|---|---|---|---|---|---|---|
+| 1 | client console-use → host triggerFly | U | code | HA | `drone_call_sync::OnUsePost` (client) / `OnDroneCallRequest` (host) | none (action) |
+
+NOT SYNCED: none on the wire. The door-sync POST observer also fires for the console's physical door (LockerDoorState) — correct behavior (box lid opens on both peers). **Security: a server-side cooldown (10 s) on `OnDroneCallRequest` (2026-08-06) throttles a spamming client from retriggering the singleton drone every tick.**
+
+### Window-dirty suppression — `coop/interactables/dwindow_sync`
+Ad_window_C (multi-pane panoramic observation window) client-side dirty() suppression. CLIENT's native dirty() timer fires independently and paints brush stamps with wrong alpha (opaque → solid dirt patches that block the view). Fix: stateless client-side suppression that clears the cv@0x0288 canvas-valid flag (dirty() is a no-op when cv is false). Host native dirty() runs normally. NO network wire — purely client-local cosmetic fix. Shipped 2026-08-01; NOT hands-on — `code`-tier. Suppression is EDGE-TRIGGERED (2026-08-06): cv is cleared only when the buggy native timer has set it true (rising edge) or re-armed it faster than we clear (persistent true); when the canvas goes idle (cv=false) the per-window state resets so the next buggy cycle is caught fresh. This keeps the clear conditional on actual buggy-timer activity and lets any future RT paint sync that sets cv=true show through on an idle window.
+| # | facet | V | E | Auth | cite | mid-join |
+|---|---|---|---|---|---|---|
+| 1 | client-side dirty() suppression (conditional cv clear) | U | code | ∅ | `dwindow_sync::SuppressClientDirty` (edge-triggered) | none (cosmetic) |
+
+NOT SYNCED: the host's RT paint is NOT synced to clients (the render-target dirt texture does not stream — by design, clients compute their own view from the suppression). The RT paint sync is explicitly DEFERRED per the module header.
+
+### Holder-authority (A3 mitigation) — `coop/props/holder_table`
+Server-side authority predicate gating PropDestroy/PropConvert: only the current holder of an entity may destroy or convert it. Per-session eid→slot table, game-thread only. Populated by grab/throw/release edges (trash_grab_intent), consulted by destroy/convert paths (remote_prop_destroy, remote_prop_convert). This is the partial mitigation for security finding A3 (`docs/security/TRACKER.md`). NO network wire — the table is populated from local grab state. Shipped 2026-08-01; NOT hands-on — `code`-tier. Design note: `research/findings/props-lifecycle/votv-holder-table-authority-design-2026-08-06.md`.
+| # | facet | V | E | Auth | cite | mid-join |
+|---|---|---|---|---|---|---|
+| 1 | PropDestroy holder-authority gate | U | code | HA | `remote_prop_destroy.cpp:170` (`holder_table::IsHeldBy` check) | none (per-session table) |
+| 2 | PropConvert holder-authority gate | U | code | HA | `remote_prop_convert.cpp:65` (`holder_table::IsHeldBy` check) | none (per-session table) |
+
+NOT SYNCED: trash proxies (separate lifecycle, explicitly skipped at the gate); host-originated destroys (senderSlot < 0 bypasses the check — correct for host authority but means the gate only protects against peer misuse); relay-whitelist fan-out timing (A3's aggravating clause — whether a forged destroy is relayed to other clients before the host denies it is unverified; see the design note §6 for the full gap analysis).
 
 
 ### Physics props — `coop/props/`
@@ -238,8 +280,22 @@ NOT SYNCED: kerfur HP as its own lane; carried contents beyond floppy; mirror AI
 | 3 | NPC destroy | U | code | HA | `npc_mirror::OnEntityDestroy` | n/a |
 | 4 | client ghost reconciliation | W | HO | HA | `npc_mirror::DestroyUntrackedClientNpcs` | snapshot-gated sweep |
 | 5 | save-persisted NPC adoption | W | HO | HA | `npc_adoption::ResolvePending` | adopt (THIS is it) |
+| 6 | NPC health fraction (display-only) | U | code | HA | `npc_pose_host::ReadNpcHealthFrac` (replaces `_pad` byte in EntityPoseSnapshot) | current-pose in spawn |
 
-NOT SYNCED: per-limb HP; AnimBP montages/timers (mirror CMC parked); non-allowlisted classes; wisp keeps its own actor tick (cosmetic).
+NOT SYNCED: per-limb HP; AnimBP montages/timers (mirror CMC parked); non-allowlisted classes; wisp keeps its own actor tick (cosmetic); NPC AI target/behavior phase/skin variant (see NPC coherence state).
+
+### NPC coherence state (Phase 6D) — `coop/creatures/npc_state_host`, `coop/player/remote_player` (death suppression)
+Host-authoritative NPC state beyond pose. Reliable on-change packet (`ReliableKind::NpcState`=127, 18 B) carrying aliveState, aiTargetEid, aiPhaseFloat, skinVariant, animVariant, summonState. Host diffs cached state against reflection-read engine properties each tick; broadcasts on any change edge. Connect-snapshot re-sends for late joiners. Death suppression (follow-up `bbfdaedd`): when aliveState > 0, client mirror skips CMC velocity/movement-mode drive so the native death AnimBP plays without fighting the pose stream. All shipped 2026-08-04 (v139); NOT hands-on — verdicts are `code`-tier (lanes exist, behaviour unobserved).
+| # | facet | V | E | Auth | cite | mid-join |
+|---|---|---|---|---|---|---|
+| 1 | alive/died state broadcast | U | code | HA | `npc_state_host::TickNpcState` (aliveState field) | connect-snapshot |
+| 2 | death suppression (CMC drive skip) | U | code | HA | `remote_player::ApplyToEngine` (aliveState > 0 gate) | rides pose stream |
+| 3 | AI target (aiTargetEid) | U | code | HA | `npc_state_host::TickNpcState` | connect-snapshot |
+| 4 | AI behavior phase (aiPhaseFloat) | U | code | HA | `npc_state_host::TickNpcState` | connect-snapshot |
+| 5 | skin variant | U | code | HA | `npc_state_host::TickNpcState` | connect-snapshot |
+| 6 | summon state | U | code | HA | `npc_state_host::TickNpcState` | connect-snapshot |
+
+NOT SYNCED: NPC AI *interception* (the host reads engine state but does not yet intercept BP UFunction dispatch — `docs/NPC_COHERENCE_DESIGN.md` §4); ragdoll state; ragdoll pelvis ROTATION (on-wire but unused). TODO (from `npc_state_host.cpp` commit): AI target/behavior phase interception requires deeper engine hook knowledge.
 
 ### Owner-entity (eyer, per-peer) — `coop/creatures/owner_entity_sync`
 | # | facet | V | E | Auth | cite | mid-join |
@@ -465,8 +521,10 @@ NOT SYNCED: any per-actor gameplay/health/BP internal beyond transform; non-pyra
 | 6 | ragdoll DISPLAY flag | U | code | PO | `remote_player_ragdoll::OnWireBit` | pose bit current on first packet |
 | 7 | ragdoll PHYSICS (pelvis velocity) | U | code | PO | `remote_player_ragdoll::SetPose` | stream resumes on edge |
 | 8 | hurt-flash (nameplate + material) | U | code | ∅ | `SetVitals` | first-hit gate |
+| 9 | crouch posture (kStateBitCrouched, bit 2) | U | code | PO | `remote_player::ApplyToEngine` → `Pup::DriveCrouchState` (reads ACharacter::bIsCrouched) | rides pose stream |
+| 10 | sitting state (kStateBitSitting, bit 3) | U | code | PO | `remote_player::ApplyToEngine` (reads mainPlayer_C::sittingOn != null; seat attachment DEFERRED) | rides pose stream |
 
-NOT SYNCED: crouch (Phase-2 wire bump); streamed ragdoll pelvis ROTATION (on-wire but unused).
+NOT SYNCED: streamed ragdoll pelvis ROTATION (on-wire but unused); seat attachment for sitting (Phase 6F follow-up — needs seat identity).
 
 ### Nameplate + nick-color — `coop/player/nameplate`, `nick_color`, `session/player_handshake_prefs`
 | # | facet | V | E | Auth | cite | mid-join |
@@ -1073,13 +1131,14 @@ answer to "did you profile everything?" is still, honestly, "not provably":
 **The DIG result (2026-07-23, third pass, "копай") — WIRE-complete, provably; FACET-complete, never.**
 The residual was dug to the bottom, and the honest split is now sharp:
 
-- **Every WIRE-CARRIED lane IS profiled — this is verifiable, not asserted.** There are **113 distinct
-  `ReliableKind`s** referenced in the tree; a script confirmed EVERY one has a dispatch-router case, and
-  each maps to a system in §1. There are **13 unreliable `MsgType` pose/stream kinds** (ClockPose,
-  DeskCursorPose, DeskSimPose, DishPose, EntityPose, HandPose, PoseSnapshot, PropPose, RagdollPose,
-  ReelPose, TrashCarryPose, VoiceFrame, WorldActorPose) and all 13 were cross-checked to a specific facet
-  (e.g. PropPose → Physics props #4, WorldActorPose → World-actor #3, ReelPose → Tape-caddy #2). **No
-  wire lane, reliable or unreliable, is outside the catalog.**
+- **Every WIRE-CARRIED lane IS profiled — this is verifiable, not asserted.** There are **116 distinct
+   `ReliableKind`s** referenced in the tree; a script confirmed EVERY one has a dispatch-router case, and
+   each maps to a system in §1. There are **13 unreliable `MsgType` pose/stream kinds** (ClockPose,
+   DeskCursorPose, DeskSimPose, DishPose, EntityPose, HandPose, PoseSnapshot, PropPose, RagdollPose,
+   ReelPose, TrashCarryPose, VoiceFrame, WorldActorPose) and all 13 were cross-checked to a specific facet
+   (e.g. PropPose → Physics props #4, WorldActorPose → World-actor #3, ReelPose → Tape-caddy #2). New since
+   the last sweep: `SeedSync=121` (Seed sync), `DroneCallRequest=122` (Drone-call sync), `NpcState=127`
+   (NPC coherence state) — all profiled. **No wire lane, reliable or unreliable, is outside the catalog.**
 - **The ~100 uncited `coop/*.cpp` files carry no new SYSTEM.** Triaged by whether each does wire/hook
   work: `dev/` probes (~45, tools), `net/`+`dispatch/`+`element/` infra (~28: transport, the four
   routers that list every kind, the identity registry, the `session_*` send-side plumbing), and
@@ -1089,10 +1148,11 @@ The residual was dug to the bottom, and the honest split is now sharp:
 - **What CANNOT be proven complete — and §3 says so.** The facet set is not machine-enumerable: a RACE
   is not a wire lane (the container CAS lives only in an interleaving), and non-wire local behaviors
   (`net_stats` HUD, a grab sound, a local guard) have no lane to census. The dig found the main non-wire
-  systems (moderation, save-suppression, spawn-authority, pause-guard) and the main presentation facets
-  (prop_sound); more presentation trivia may exist, but there is no wire lane and no game system left
-  unaccounted. **So the honest ceiling is: wire coverage is complete and checkable; facet coverage is
-  bounded below by that and open above — a count with a named residual, never a checkmark.**
+systems (moderation, save-suppression, spawn-authority, pause-guard, window-dirty suppression,
+   holder-authority) and the main presentation facets (prop_sound); more presentation trivia may exist, but
+   there is no wire lane and no game system left unaccounted. **So the honest ceiling is: wire coverage is
+   complete and checkable; facet coverage is bounded below by that and open above — a count with a named
+   residual, never a checkmark.**
 
 **Genuinely infra, not game-facet systems** (correctly excluded): `element/` (identity registry),
 `net/` (transport), the `dispatch/` routers, `config/`, `dev/`, `session/net_pump` + `subsystems`

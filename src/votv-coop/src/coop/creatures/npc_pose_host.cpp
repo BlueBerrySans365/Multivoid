@@ -3,8 +3,10 @@
 // Extracted from npc_sync.cpp (2026-06-07) per the 800-LOC soft cap; npc_sync.cpp
 // had grown to 869 once the pose stream landed. Owns the two host-only paths that
 // READ live NPC actor transforms + push them onto the wire:
-//   - TickPoseStream():            per-tick EntityPose batch (unreliable, ~sendHz)
-//                                  so client mirrors MOVE between spawn + destroy.
+//   - TickPoseStream():            throttled (~10 Hz, 2026-08-06) EntityPose batch
+//                                  (unreliable) so client mirrors MOVE between spawn +
+//                                  destroy. Reflection reads run at ~10 Hz; the batch is
+//                                  re-published each tick and the net thread re-sends it.
 //   - QueueConnectBroadcastForSlot: connect-edge EntitySpawn re-send (reliable) so
 //                                  a fresh joiner mirrors NPCs that spawned before
 //                                  it joined.
@@ -29,6 +31,7 @@
 #include "ue_wrap/core/reflection.h"
 #include "ue_wrap/core/types.h"  // NormalizeAxis
 
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <string>
@@ -137,7 +140,7 @@ void TickPoseStream() {
     // LIFECYCLE runs while HOSTING (alone included); only the batch PUBLISH is peer-dependent
     // (RULE 1 root fix 2026-07-05, the 0s pyramid failure): the EX-catch drain must enroll
     // event creatures spawned while the host is alone, and a tracked NPC that self-destroys
-    // while alone must dead-retire then -- the join connect-snapshot replays what remains.
+    // while alone must dead-retire then -- the connect-snapshot replays what remains.
     auto* s = GetSession();
     if (!s || s->role() != coop::net::Role::Host) return;
     const bool connected = s->connected();
@@ -151,13 +154,25 @@ void TickPoseStream() {
     // No-op unless the flag is set; throttled internally. Read-only.
     coop::kerfur_census::Tick();
 
+    // The expensive per-NPC reflection-read pass (location/rotation/velocity + CMC mode +
+    // kerfur state + health, every tracked NPC) is THROTTLED to ~10 Hz. The net thread fans
+    // out whatever the freshest batch is at sendHz, so repeating the last batch ~5x between
+    // reads costs nothing; the client interpolates between snapshots anyway. This cuts the
+    // per-tick reflection load by ~6x (was every tick at 60 Hz). Lifecycle (dead-retire) still
+    // runs every tick below so mirrors don't leak. 2026-08-06.
+    static std::chrono::steady_clock::time_point s_lastRead{};
+    const auto now = std::chrono::steady_clock::now();
+    static constexpr auto kReadInterval = std::chrono::milliseconds(100);  // ~10 Hz
+    const bool doRead =
+        (now - s_lastRead) >= kReadInterval;
+
     // Reused scratch (no per-tick heap alloc): Snapshot() clears+fills elems; batch is cleared then
     // refilled in-place and handed to SetLocalNpcPoseBatch BY CONST-REF (it copies), so this static
     // keeps its buffer across ticks. Safe because TickPoseStream is game-thread-only.
     static std::vector<coop::element::Npc*> elems;
     NpcMirrors().Snapshot(elems);
     static std::vector<coop::net::EntityPoseSnapshot> batch;
-    batch.clear();
+    if (doRead) batch.clear();
 
     // 2026-07-03: fair-share rotation for >kMaxNpcBatchEntries tracked NPCs (the wisp swarm
     // overflows the 31-entry MTU cap). Without it Snapshot's stable order starves the SAME tail
@@ -181,7 +196,7 @@ void TickPoseStream() {
             // forever. Eid-keyed retire + EntityDestroy broadcast; deferred teardown.
             //
             // EXCEPT kerfur-family: their PE-invisible death edge is OWNED by
-            // kerfur_convert's 5 Hz conversion poll ([[feedback-one-owner-order-axis]]) --
+            // kerfur_convert's 5 Hz conversion poll ([[feedback-one-owner-axis]]) --
             // it must see the mirror Element + its dead actor to distinguish a radial-menu
             // CONVERSION (converge: release old form + silent-enroll the new form) from a
             // plain death. This per-tick retire raced ahead of the 200 ms poll and erased
@@ -193,6 +208,10 @@ void TickPoseStream() {
             continue;
         }
         if (!connected) continue;  // no peers: lifecycle-only pass, no batch to build
+        // Throttle (2026-08-06): skip the expensive reflection reads on non-read ticks.
+        // The batch retains its last-read values and the net thread re-sends them; only the
+        // live/dead lifecycle above runs every tick.
+        if (!doRead) continue;
         if (static_cast<int>(batch.size()) >= coop::net::kMaxNpcBatchEntries) { ++truncated; continue; }
         coop::net::EntityPoseSnapshot snap{};
         snap.elementId = static_cast<uint32_t>(el->GetId());
@@ -250,6 +269,8 @@ void TickPoseStream() {
         batch.push_back(snap);
     }
     if (!connected) return;  // publish is peer-dependent
+    // Update the read timestamp only on read ticks (doRead guards the batch.clear() above too).
+    if (doRead) s_lastRead = now;
     if (truncated > 0) {
         static bool s_warnedTrunc = false;
         if (!s_warnedTrunc) { s_warnedTrunc = true;

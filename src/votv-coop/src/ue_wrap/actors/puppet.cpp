@@ -476,7 +476,8 @@ bool ReadCharacterIsCrouched(void* actor) {
     return ReadAt<uint8_t>(actor, P::off::ACharacter_bIsCrouched) != 0;
 }
 
-void DriveCrouchState(void* actor, bool crouched) {
+void DriveCrouchState(void* actor, bool crouched,
+                      float standingHalfH, float standingMeshOffsetZ) {
     if (!actor || !R::IsLive(actor)) return;
     // Already in the desired state -- no-op.
     const bool currentlyCrouched = ReadAt<uint8_t>(actor, P::off::ACharacter_bIsCrouched) != 0;
@@ -488,29 +489,32 @@ void DriveCrouchState(void* actor, bool crouched) {
     // Write the crouch flags.
     WriteAt<uint8_t>(actor, P::off::ACharacter_bIsCrouched, crouched ? 1 : 0);
     WriteAt<uint8_t>(cmc, P::off::UCharacterMovement_bWantsToCrouch, crouched ? 1 : 0);
-    // Resize the capsule. The standing half-height is the class default (read
-    // once from the CMC's CrouchedHalfHeight -- which IS the crouched height;
-    // the standing height is the default half-height at spawn time). Cache it
-    // from the first call while standing.
-    static float sStandingHalfH = 0.f;
+    // Resize the capsule: crouchedHalfH from the CMC class default, standing
+    // half-height from the spawn-captured value (replaces the old process-wide
+    // static sStandingHalfH which could be corrupted if the first puppet to
+    // trigger this function was already crouched).
     const float crouchedHalfH = ReadAt<float>(cmc, P::off::UCharacterMovement_CrouchedHalfHeight);
-    if (sStandingHalfH <= 0.f) {
-        // First call: read the current capsule height as the standing baseline.
-        sStandingHalfH = ReadAt<float>(capsule, P::off::UCapsuleComponent_CapsuleHalfHeight);
-        if (sStandingHalfH <= 0.f) sStandingHalfH = 88.f;  // VOTV mainPlayer_C default
-    }
-    const float targetHalfH = crouched ? crouchedHalfH : sStandingHalfH;
+    const float targetHalfH = crouched ? crouchedHalfH : standingHalfH;
     WriteAt<float>(capsule, P::off::UCapsuleComponent_CapsuleHalfHeight, targetHalfH);
-    // Adjust mesh relative Z to keep feet grounded: mesh.RelLoc.Z = -targetHalfH.
-    // The puppet's mesh is the root component, so the actor location IS the capsule
-    // center; shifting the mesh down by the half-height delta keeps the feet at the
-    // same world-Z (matching the source's ACharacter::Crouch mesh adjustment).
+    // Adjust mesh relative Z to keep feet grounded.
+    // Crouching: mesh offset = -crouchedHalfH (standard UE4 crouch shim).
+    // Standing:  restore to standingMeshOffsetZ (the value captured at spawn
+    //   after the engine settled the attachment chain; typically 0). This
+    //   replaces the old -standingHalfH formula which mismatched the
+    //   spawn-settle value (puppet_spawn.cpp:434 sets Mesh.RelLoc.Z = 0,
+    //   but -standingHalfH = -88 left the mesh 88 cm low after uncrouch).
     if (void* mesh = ReadPtr(actor, P::off::ACharacter_Mesh)) {
         if (R::IsLive(mesh)) {
-            // RelativeLocation.Z is at USceneComponent_RelativeLocation + sizeof(float)
-            // (FVector layout: X @ +0x011C, Y @ +0x0120, Z @ +0x0124).
             constexpr size_t kRelLocZ = P::off::USceneComponent_RelativeLocation + sizeof(float) * 2;
-            WriteAt<float>(mesh, kRelLocZ, -targetHalfH);
+            const float meshOffsetZ = crouched ? -crouchedHalfH : standingMeshOffsetZ;
+            WriteAt<float>(mesh, kRelLocZ, meshOffsetZ);
+            // Debug log: print mesh RelLoc.Z and capsule half-height on every
+            // state transition so drift can be empirically confirmed post-fix.
+            // Cheap (one UE_LOG per transition, not per tick).
+            const float capH = ReadAt<float>(capsule, P::off::UCapsuleComponent_CapsuleHalfHeight);
+            UE_LOGI("DriveCrouchState: %s -> meshZ=%.1f capH=%.1f (standingH=%.1f standMeshZ=%.1f crouchH=%.1f)",
+                    crouched ? "CROUCH" : "STAND", meshOffsetZ, capH,
+                    standingHalfH, standingMeshOffsetZ, crouchedHalfH);
         }
     }
 }

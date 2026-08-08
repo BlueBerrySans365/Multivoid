@@ -30,6 +30,16 @@ namespace GT = ue_wrap::game_thread;
 std::atomic<coop::net::Session*> g_session{nullptr};
 bool g_installed = false;
 
+// Server-side cooldown: a client can request a drone call at most once per
+// kDroneCallCooldownMs. Host is untrusted at the receive boundary, so the
+// throttle lives here (host-side) regardless of any client-enforced pacing.
+// 10 s is conservative -- the drone's own flight cycle is several seconds,
+// and this is a singleton delivery drone (one call at a time is the sane
+// upper bound). Prevents a spamming client from retriggering the drone on
+// every tick.
+constexpr uint64_t kDroneCallCooldownMs = 10000;
+uint64_t g_lastCallTimeMs = 0;
+
 // Resolved once (lazily, retried until classes load).
 void* g_droneCls    = nullptr;  // Adrone_C
 void* g_consoleCls  = nullptr;  // AdroneConsole_C
@@ -128,6 +138,20 @@ void OnDroneCallRequest(uint8_t senderSlot) {
     auto* s = g_session.load(std::memory_order_acquire);
     if (!s || s->role() != coop::net::Role::Host) return;
 
+    // Server-side cooldown: reject requests faster than kDroneCallCooldownMs.
+    // A spamming client could otherwise retrigger the drone every tick.
+    const uint64_t nowMs = static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count());
+    if (nowMs - g_lastCallTimeMs < kDroneCallCooldownMs) {
+        UE_LOGW("drone_call_sync: DroneCallRequest from slot %u throttled (cooldown %llu ms, "
+                "elapsed %llu ms)", static_cast<unsigned>(senderSlot),
+                static_cast<unsigned long long>(kDroneCallCooldownMs),
+                static_cast<unsigned long long>(nowMs - g_lastCallTimeMs));
+        return;
+    }
+    g_lastCallTimeMs = nowMs;
+
     if (!EnsureResolved()) {
         UE_LOGW("drone_call_sync: cannot resolve drone/console classes -- request dropped");
         return;
@@ -169,8 +193,10 @@ void OnDroneCallRequest(uint8_t senderSlot) {
 
 void OnDisconnect() {
     // g_installed stays true -- the observer is registered for process lifetime.
-    // Only the session pointer needs clearing.
+    // Only the session pointer needs clearing. Reset the cooldown so the next
+    // session starts unthrottled.
     g_session.store(nullptr, std::memory_order_release);
+    g_lastCallTimeMs = 0;
 }
 
 }  // namespace coop::drone_call_sync
