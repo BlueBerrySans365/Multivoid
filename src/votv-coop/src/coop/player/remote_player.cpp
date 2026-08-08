@@ -50,6 +50,16 @@ float Dist3(const ue_wrap::FVector& a, const ue_wrap::FVector& b) {
     return std::sqrt(dx * dx + dy * dy + dz * dz);
 }
 
+// Raw engine memory access helpers (same as ue_wrap::puppet internals but
+// local to this TU so the coop layer doesn't pull in private headers).
+void* ReadPtr(void* base, size_t off) {
+    return base ? *reinterpret_cast<void**>(reinterpret_cast<uint8_t*>(base) + off) : nullptr;
+}
+template <class T>
+T ReadAt(void* base, size_t off) {
+    return *reinterpret_cast<T*>(reinterpret_cast<uint8_t*>(base) + off);
+}
+
 }  // namespace
 
 bool RemotePlayer::Spawn(const std::string& skinName) {
