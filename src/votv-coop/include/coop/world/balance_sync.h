@@ -4,12 +4,13 @@
 // every writer -- shop orders, signal-disk sells, task rewards, the +1000 dev button)
 // and broadcasts BalanceSync on CHANGE (+ to a joining client on its connect edge), so
 // every peer MIRRORS the host's balance. The CLIENT writes the host's absolute value
-// directly (no AddPoints side-effects). A client-side credit (the +1000 dev button; a
-// future laptop-shop buy) can't write its own mirror -- the next BalanceSync overwrites
-// it -- so it routes to the host as a BalanceDelta, which the host applies via AddPoints
-// (its poll then re-broadcasts the new total). HOST-authoritative, MTA server-economy
-// shape. Game thread only for the apply paths (SetSession/Tick/connect run on the net-
-// pump game thread; the receivers GT::Post their UObject writes).
+// directly (no AddPoints side-effects). HOST-authoritative, MTA server-economy shape.
+// Game thread only for the apply paths (SetSession/Tick/connect run on the net-pump
+// game thread; the receivers GT::Post their UObject writes).
+//
+// A5 (2026-08-01): the BalanceDelta lane (client->host credit request) was retired per
+// RULE 2. Credits route only through the host's own AddPoints (dev button, future shop).
+// Clients mirror the host's absolute balance via BalanceSync.
 
 #pragma once
 
@@ -35,13 +36,8 @@ void OnClientConnect(int slot);
 // on the host (authoritative). GT::Posts the write.
 void ApplyFromHost(int32_t total);
 
-// RETIRED (2026-08-01, A5): the BalanceDelta lane is retired (RULE 2). The sole caller
-// was the dev +1000 button, now host-only. Kept as dead code for documentation; the
-// event_feed.cpp case drops on receipt.
-void OnDeltaRequest(int32_t amount);  // RETIRED — dead code
-
-// Route a LOCAL credit (the +1000 dev button): host/solo applies via AddPoints. A5 (2026-08-01):
-// the BalanceDelta lane is retired, so clients can no longer route credits. Safe from render thread.
+// Route a LOCAL credit (the +1000 dev button): host/solo applies via AddPoints. Client
+// path removed (A5: BalanceDelta lane retired). Safe from render thread.
 void CreditRouted(int32_t amount);
 
 // Reset the broadcast dedup on session teardown (so a reconnect re-broadcasts).

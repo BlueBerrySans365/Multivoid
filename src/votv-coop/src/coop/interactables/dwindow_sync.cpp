@@ -156,6 +156,11 @@ void SuppressClientDirty() {
                 *cvPtr = false;
                 w.suppressed = true;
                 ++suppressed;
+                if (w.consecutiveTrue > 1) {
+                    UE_LOGI("dwindow: fast-timer fallback -- cv persisted %d ticks on "
+                            "%p (buggy timer re-arming faster than clear)",
+                            w.consecutiveTrue, w.actor);
+                }
             }
         } else {
             // Canvas went idle -- reset so the next buggy cycle is caught fresh.

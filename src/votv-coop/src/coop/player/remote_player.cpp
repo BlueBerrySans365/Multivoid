@@ -343,6 +343,28 @@ void RemotePlayer::SetTargetPose(const coop::net::PoseSnapshot& snap) {
         window_.Close();  // freeze (no interp budget)
         hasPose_ = true;
         ApplyToEngine();
+        // First-pose crouch diagnostic: read the puppet's capsule half-height
+        // and mesh RelLoc.Z AFTER ApplyToEngine (which may have fired
+        // DriveCrouchState). Useful for late-join scenarios where the source
+        // is already crouched — DriveCrouchState no-ops (state unchanged),
+        // so the log confirms the puppet's engine state matches the source's.
+        if (void* mesh = Pup::GetSkeletalMeshComponent(actor_)) {
+            if (R::IsLive(mesh)) {
+                constexpr size_t kRelLocZ = P::off::USceneComponent_RelativeLocation + sizeof(float) * 2;
+                const float meshZ = ReadAt<float>(mesh, kRelLocZ);
+                float capH = 0.f;
+                if (void* cap = ReadPtr(actor_, P::off::ACharacter_CapsuleComponent)) {
+                    if (R::IsLive(cap))
+                        capH = ReadAt<float>(cap, P::off::UCapsuleComponent_CapsuleHalfHeight);
+                }
+                const bool crouched = (snap.stateBits & coop::net::kStateBitCrouched) != 0;
+                const bool sitting  = (snap.stateBits & coop::net::kStateBitSitting)  != 0;
+                UE_LOGI("RemotePlayer::firstPose: crouch=%d sit=%d -> meshZ=%.1f capH=%.1f "
+                        "(baseline: capH=%.1f meshZ=%.1f)",
+                        (int)crouched, (int)sitting, meshZ, capH,
+                        spawnCapsuleHalfH_, spawnMeshOffsetZ_);
+            }
+        }
         dirty_ = false;  // just pushed it
         return;
     }
